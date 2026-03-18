@@ -24,3 +24,9 @@ Whenever a change is made to the project, you must update the appropriate docume
 Below will be a file tree showing the contents of ./docs. This should be kept up to date, explaining what each file is for and what it outlines. This needs to
 
 ## Documentation Structure:
+
+```
+docs/
+├── ARCHITECTURE.md   # Project structure, design decisions, class overview, collision algorithms
+└── BUILD.md          # Prerequisites, install steps, build commands, run instructions
+```
