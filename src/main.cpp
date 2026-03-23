@@ -5,9 +5,13 @@
 // via command-line argument (default 0.3).
 //
 // Usage: ./simulator [restitution]
+//        ./simulator --headless [restitution] [frames] [screenshot_prefix]
+//
 //   restitution: float in [0, 1], default 0.3
-//                0.0 = perfectly inelastic (balls stop fast)
-//                1.0 = perfectly elastic (balls bounce forever)
+//   --headless:  Run for a fixed number of frames using the offscreen driver,
+//                saving BMP screenshots at key moments (start, mid, settled).
+//   frames:      Number of frames to simulate in headless mode (default 600).
+//   screenshot_prefix: Prefix for screenshot filenames (default "screenshot").
 
 #include "physics.h"
 #include "renderer.h"
@@ -15,6 +19,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <ctime>
+#include <cstring>
 
 // ── Scene setup constants ───────────────────────────────────────────
 constexpr int   NUM_BALLS       = 1000;
@@ -82,17 +87,109 @@ static void setupBalls(PhysicsWorld& world) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Headless mode — run for a fixed number of frames with the offscreen
+// video driver, saving BMP screenshots at key moments.
+// ═══════════════════════════════════════════════════════════════════════
+static int runHeadless(float restitution, int totalFrames, const char* prefix) {
+    printf("Headless mode: %d frames, restitution=%.2f, prefix='%s'\n",
+           totalFrames, restitution, prefix);
+
+    // Force offscreen driver so we get a real rendering surface
+    // without needing a display server.
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+
+    PhysicsWorld world;
+    world.config.restitution = restitution;
+    world.config.gravity     = 500.0f;
+    world.config.substeps    = 8;
+    world.config.damping     = 0.999f;
+    world.config.friction    = 0.1f;
+    world.config.sleepSpeed  = 2.0f;
+
+    setupWalls(world);
+    setupBalls(world);
+
+    Renderer renderer;
+    if (!renderer.init()) {
+        fprintf(stderr, "Headless: failed to initialize renderer\n");
+        return 1;
+    }
+
+    // Fixed timestep for deterministic headless simulation.
+    constexpr float dt = 1.0f / 60.0f;
+
+    // Screenshot schedule: frame 0 (initial), 25% (bouncing), 50% (settling),
+    // and the final frame (fully settled).
+    int screenshotFrames[] = {
+        0,
+        totalFrames / 4,
+        totalFrames / 2,
+        totalFrames - 1
+    };
+    const char* labels[] = {"initial", "bouncing", "settling", "settled"};
+
+    int nextShot = 0;
+
+    for (int frame = 0; frame < totalFrames; ++frame) {
+        world.step(dt);
+
+        // Render every frame so the final screenshot reflects the true state.
+        renderer.clear();
+        renderer.draw(world);
+        renderer.drawHUD(60.0f, static_cast<int>(world.balls.size()));
+        renderer.present();
+
+        // Save screenshot at scheduled moments.
+        if (nextShot < 4 && frame == screenshotFrames[nextShot]) {
+            char filename[256];
+            snprintf(filename, sizeof(filename), "%s_%s.bmp", prefix, labels[nextShot]);
+            if (renderer.saveScreenshot(filename)) {
+                printf("  Saved %s (frame %d)\n", filename, frame);
+            }
+            nextShot++;
+        }
+
+        // Progress reporting every 10% of frames
+        if (frame > 0 && frame % (totalFrames / 10) == 0) {
+            float ke = world.totalKineticEnergy();
+            printf("  Frame %d/%d — KE=%.1f\n", frame, totalFrames, ke);
+        }
+    }
+
+    printf("Headless run complete.\n");
+    return 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // main
 // ═══════════════════════════════════════════════════════════════════════
 int main(int argc, char* argv[]) {
     srand(static_cast<unsigned>(time(nullptr)));
 
-    // Parse optional restitution from command line
+    // Check for --headless flag
+    bool headless = false;
+    int argOffset = 1;
+    if (argc >= 2 && strcmp(argv[1], "--headless") == 0) {
+        headless = true;
+        argOffset = 2;
+    }
+
+    // Parse restitution (first positional arg after flags)
     float restitution = 0.3f;
-    if (argc >= 2) {
-        restitution = static_cast<float>(atof(argv[1]));
+    if (argc > argOffset) {
+        restitution = static_cast<float>(atof(argv[argOffset]));
         if (restitution < 0.0f) restitution = 0.0f;
         if (restitution > 1.0f) restitution = 1.0f;
+    }
+
+    if (headless) {
+        // Parse optional frame count and screenshot prefix
+        int frames = 600;
+        const char* prefix = "screenshot";
+        if (argc > argOffset + 1) frames = atoi(argv[argOffset + 1]);
+        if (argc > argOffset + 2) prefix = argv[argOffset + 2];
+        if (frames < 1) frames = 600;
+        return runHeadless(restitution, frames, prefix);
     }
 
     printf("Physics Simulator — restitution = %.2f\n", restitution);

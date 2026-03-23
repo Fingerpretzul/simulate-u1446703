@@ -1043,6 +1043,207 @@ TEST(large_scale_restitution_preserves_packed_size) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Continuous collision detection (CCD) tests
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(ccd_prevents_fast_ball_tunneling) {
+    // A ball moving at extreme speed with very few substeps should NOT
+    // tunnel through a wall, thanks to CCD in integratePositions.
+    // Without CCD, the ball would teleport past the wall in one substep.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 1;        // Deliberately low — CCD must save us
+    world.config.restitution = 0.8f;
+    world.config.friction = 0.0f;
+    world.config.damping = 1.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    // Ball at x=50, radius 5, moving right at 10000 px/s.
+    // Wall at x=200. In one substep of dt=0.016, the ball would move
+    // 160px — well past the wall at x=200.
+    Ball b(Vec2(50.0f, 100.0f), 5.0f);
+    b.vel = {10000.0f, 0.0f};
+    world.balls.push_back(b);
+
+    // Vertical wall at x=200
+    world.walls.push_back(Wall(Vec2(200.0f, 0.0f), Vec2(200.0f, 200.0f)));
+
+    world.step(0.016f);
+
+    // Ball must NOT have passed through the wall
+    ASSERT(world.balls[0].pos.x < 200.0f);
+    // Ball should have bounced (negative x velocity)
+    ASSERT(world.balls[0].vel.x < 0.0f);
+}
+
+TEST(ccd_works_with_angled_walls) {
+    // CCD should also catch tunneling through angled walls, not just
+    // axis-aligned ones. The wall orientation matters: the ball must
+    // start on the positive-normal side (left of p1→p2 for CW winding).
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 1;
+    world.config.restitution = 0.5f;
+    world.config.friction = 0.0f;
+    world.config.damping = 1.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    // Ball at (250, 50) moving down-left at extreme speed toward a
+    // diagonal wall. The wall goes from (200,100) to (100,200), so its
+    // left-hand normal points toward upper-right — where the ball starts.
+    Ball b(Vec2(250.0f, 50.0f), 5.0f);
+    b.vel = {-5000.0f, 5000.0f};
+    world.balls.push_back(b);
+
+    // Diagonal wall: p1=(200,100) p2=(100,200), normal = (0.707, 0.707)
+    world.walls.push_back(Wall(Vec2(200.0f, 100.0f), Vec2(100.0f, 200.0f)));
+
+    world.step(0.016f);
+
+    // Ball must stay on the positive-normal side of the wall.
+    Vec2 wallNormal = world.walls[0].normal();
+    float distToWallLine = (world.balls[0].pos - world.walls[0].p1).dot(wallNormal);
+    ASSERT(distToWallLine >= world.balls[0].radius - 1.0f);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Full-scale 1000-ball tests (matches production spec exactly)
+// ═══════════════════════════════════════════════════════════════════════
+
+// Helper: build a 1000-ball world matching the simulator's actual scene layout.
+// Uses the same container, shelves, and ball radius range as main.cpp but with
+// deterministic placement (no randomness) for reproducible results.
+static PhysicsWorld makeFullScaleWorld(float restitution) {
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.substeps = 8;
+    world.config.restitution = restitution;
+    world.config.damping = 0.999f;
+    world.config.friction = 0.1f;
+    world.config.sleepSpeed = 2.0f;
+
+    // Container matching main.cpp: 1200×800 window, 50px margin
+    float left = 50.0f, right = 1150.0f, top = 50.0f, bottom = 750.0f;
+    world.walls.push_back(Wall(Vec2(left, top), Vec2(right, top)));
+    world.walls.push_back(Wall(Vec2(right, top), Vec2(right, bottom)));
+    world.walls.push_back(Wall(Vec2(right, bottom), Vec2(left, bottom)));
+    world.walls.push_back(Wall(Vec2(left, bottom), Vec2(left, top)));
+
+    // Same shelves as main.cpp
+    float midX = (left + right) / 2.0f;
+    float shelfY1 = top + (bottom - top) * 0.35f;
+    float shelfY2 = top + (bottom - top) * 0.6f;
+    world.walls.push_back(Wall(Vec2(left, shelfY1), Vec2(midX - 40.0f, shelfY1 + 50.0f)));
+    world.walls.push_back(Wall(Vec2(midX + 40.0f, shelfY2 + 50.0f), Vec2(right, shelfY2)));
+
+    // 1000 balls in a grid with mixed radii (3–6 px, matching BALL_RADIUS range)
+    float spacing = 13.0f;
+    int cols = static_cast<int>((right - left - 20.0f) / spacing);
+    for (int i = 0; i < 1000; ++i) {
+        int col = i % cols;
+        int row = i / cols;
+        float x = left + 10.0f + col * spacing;
+        float y = top + 10.0f + row * spacing;
+        float r = 3.0f + static_cast<float>(i % 4); // 3–6 px radius
+        world.balls.push_back(Ball(Vec2(x, y), r));
+    }
+
+    return world;
+}
+
+TEST(full_scale_1000_balls_no_overlap_after_settling) {
+    // The production spec calls for 1000 balls. After settling, no pair
+    // should have >1px penetration and all balls must stay inside the
+    // container walls. Uses the spatial grid for the overlap check to
+    // keep the test O(n) instead of O(n²).
+    PhysicsWorld world = makeFullScaleWorld(0.3f);
+
+    // 1500 frames ≈ 25 simulated seconds at 60 FPS — enough to fully settle
+    for (int i = 0; i < 1500; ++i) {
+        world.step(0.016f);
+    }
+
+    // Check overlaps using spatial grid (O(n) instead of O(n²))
+    SpatialGrid grid;
+    float maxRadius = 0.0f;
+    for (const auto& b : world.balls) {
+        if (b.radius > maxRadius) maxRadius = b.radius;
+    }
+    grid.cellSize = std::max(maxRadius * 2.0f, 1.0f);
+    for (int i = 0; i < static_cast<int>(world.balls.size()); ++i) {
+        grid.insert(i, world.balls[i]);
+    }
+
+    int overlapCount = 0;
+    grid.forEachPair([&](int i, int j) {
+        Vec2 diff = world.balls[j].pos - world.balls[i].pos;
+        float dist = diff.length();
+        float minDist = world.balls[i].radius + world.balls[j].radius;
+        if (dist < minDist - 1.0f) {
+            overlapCount++;
+        }
+    });
+    ASSERT(overlapCount == 0);
+
+    // All balls inside container (50px margin, with tolerance)
+    for (const auto& b : world.balls) {
+        ASSERT(b.pos.x > 44.0f && b.pos.x < 1156.0f);
+        ASSERT(b.pos.y > 44.0f && b.pos.y < 756.0f);
+    }
+
+    // At least 90% of balls should be settled
+    int settled = 0;
+    for (const auto& b : world.balls) {
+        if (b.vel.length() < 5.0f) settled++;
+    }
+    ASSERT(settled > 900);
+}
+
+TEST(full_scale_1000_balls_restitution_invariance) {
+    // The spec requires that restitution changes settling speed but NOT
+    // the final settled footprint. This is the ultimate test: 1000 balls
+    // with the actual simulator layout across three restitution values.
+    auto runAndMeasure = [](float restitution) -> SettledBounds {
+        PhysicsWorld world = makeFullScaleWorld(restitution);
+        // 2000 frames to ensure even high-restitution fully settles
+        for (int i = 0; i < 2000; ++i) {
+            world.step(0.016f);
+        }
+        SettledBounds bounds;
+        bounds.minX = 1e9f; bounds.maxX = -1e9f;
+        bounds.minY = 1e9f; bounds.maxY = -1e9f;
+        bounds.maxSpeed = 0.0f;
+        for (const auto& b : world.balls) {
+            bounds.minX = std::min(bounds.minX, b.pos.x - b.radius);
+            bounds.maxX = std::max(bounds.maxX, b.pos.x + b.radius);
+            bounds.minY = std::min(bounds.minY, b.pos.y - b.radius);
+            bounds.maxY = std::max(bounds.maxY, b.pos.y + b.radius);
+            bounds.maxSpeed = std::max(bounds.maxSpeed, b.vel.length());
+        }
+        return bounds;
+    };
+
+    const SettledBounds low  = runAndMeasure(0.0f);
+    const SettledBounds med  = runAndMeasure(0.3f);
+    const SettledBounds high = runAndMeasure(0.9f);
+
+    // All should be fully settled
+    ASSERT_NEAR(low.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(med.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(high.maxSpeed, 0.0f, 0.05f);
+
+    // Final packing dimensions should match. With 1000 balls in the full
+    // container the pile is tall and wide, so allow 3px tolerance for
+    // stacking-order variations due to different transient dynamics.
+    ASSERT_NEAR(low.width(), med.width(), 3.0f);
+    ASSERT_NEAR(low.width(), high.width(), 3.0f);
+    ASSERT_NEAR(low.height(), med.height(), 3.0f);
+    ASSERT_NEAR(low.height(), high.height(), 3.0f);
+    ASSERT_NEAR(low.minY, med.minY, 3.0f);
+    ASSERT_NEAR(low.minY, high.minY, 3.0f);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Main — run all tests
 // ═══════════════════════════════════════════════════════════════════════
 

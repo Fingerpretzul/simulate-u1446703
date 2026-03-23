@@ -1,6 +1,8 @@
 build/
+screenshots/
 *.o
 *.a
 *.log
+*.bmp
 .DS_Store
 compile_commands.json

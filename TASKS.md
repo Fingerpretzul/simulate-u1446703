@@ -1,5 +1,18 @@
 # Tasks
 
+## Completed — Iteration 8 (2026-03-23)
+
+- [x] Rebuild SDL3 with video support enabled (`SDL_VIDEO=ON`)
+- [x] Add `--headless` mode with BMP screenshot capture at key simulation moments
+- [x] Add `saveScreenshot()` to Renderer using `SDL_RenderReadPixels` + `SDL_SaveBMP`
+- [x] Implement CCD (continuous collision detection) — swept-circle-vs-line in `integratePositions()`
+- [x] Add 2 CCD tests: `ccd_prevents_fast_ball_tunneling`, `ccd_works_with_angled_walls`
+- [x] Add 1000-ball full-scale tests: `full_scale_1000_balls_no_overlap_after_settling`, `full_scale_1000_balls_restitution_invariance`
+- [x] Optimize spatial grid: O(1) `clear()` via generation counter (replaces per-cell iteration)
+- [x] Capture screenshots at restitution 0.0, 0.3, 0.9 — verified rendering and settling behavior
+- [x] Build, verify 35/35 tests pass, performance still 0.8–0.9 ms/frame
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, AGENT-PROGRESS.md, TASKS.md)
+
 ## Completed — Iteration 7 (2026-03-23)
 
 - [x] Build and verify 29/29 baseline tests pass
@@ -69,9 +82,12 @@
 - [x] ~~**Performance profiling**~~ — 1000-ball step measured at ~0.8 ms/frame avg; idempotent spatial grid, no hash-set overhead
 - [x] ~~**FPS counter**~~ — Added FPS + ball count HUD overlay
 - [x] ~~**Collision edge cases (glancing, dense stacks)**~~ — Added glancing endpoint, dense column, and spatial grid correctness tests
-- [ ] **Wall thickness**: Very fast balls could still tunnel if substeps are too low. Consider CCD (continuous collision detection) for extreme cases
-- [x] ~~**Settling verification**~~ — 500-ball no-overlap and settling-invariance tests added in iteration 7
-- [ ] **Visual polish**: Ball outlines, restitution slider UI, color scheme options
-- [ ] **Screen recording**: Take a screenshot/recording to document visual behavior (requires display-capable environment)
+- [x] ~~**Wall thickness / CCD**~~ — Implemented swept-circle CCD in iteration 8; fast balls no longer tunnel through walls
+- [x] ~~**Settling verification**~~ — Full 1000-ball no-overlap and settling-invariance tests added in iteration 8
 - [x] ~~**Pair dedup optimization**~~ — Removed hash-set; idempotent resolution handles duplicates (iteration 7)
-- [ ] **SDL3 video support**: The current environment's SDL3 is built without video support; visual verification requires a display-capable environment
+- [x] ~~**SDL3 video support**~~ — Rebuilt SDL3 with `SDL_VIDEO=ON` in iteration 8; offscreen rendering + BMP screenshots now work
+- [x] ~~**Screen recording**~~ — Headless screenshot capture implemented in iteration 8; screenshots at 3 restitution values saved
+- [x] ~~**Spatial grid clear optimization**~~ — Generation counter replaces per-cell iteration (iteration 8)
+- [ ] **Visual polish**: Ball outlines, restitution slider UI, color scheme options
+- [ ] **SIMD vectorization**: Consider SIMD for the physics step inner loops
+- [ ] **Interactive display**: Need an environment with a real display server (X11/Wayland) for interactive mode

@@ -99,13 +99,22 @@ struct CellKeyHash {
     }
 };
 
+// ── Per-cell data with generation counter ────────────────────────────
+// Instead of clearing every cell each solver iteration, we track a
+// generation counter. A cell is only "active" if its generation matches
+// the grid's current generation. This turns clear() from O(cells) to O(1).
+struct CellData {
+    std::vector<int> indices;
+    uint32_t generation = 0;   // Last generation this cell was written to
+};
+
 class SpatialGrid {
 public:
     // cellSize should be >= 2 * max ball radius so every ball touches
     // at most 4 cells (the 2×2 neighborhood of its center cell).
     float cellSize = 20.0f;
 
-    // Clear all cells — called once per solver iteration before re-insert.
+    // Clear all cells — O(1) via generation counter bump.
     void clear();
 
     // Insert ball index into every cell its bounding box overlaps.
@@ -117,20 +126,22 @@ public:
     void forEachPair(Func&& fn) const;
 
 private:
-    // Maps cell coordinate → list of ball indices in that cell.
-    std::unordered_map<CellKey, std::vector<int>, CellKeyHash> cells_;
+    uint32_t generation_ = 0;  // Incremented on each clear()
+
+    // Maps cell coordinate → list of ball indices + generation stamp.
+    std::unordered_map<CellKey, CellData, CellKeyHash> cells_;
 };
 
 // ── Template implementation (must be in header) ─────────────────────
 template<typename Func>
 void SpatialGrid::forEachPair(Func&& fn) const {
-    // For each cell, test all pairs within it. To avoid reporting the
-    // same (i,j) pair from two different cells, we only call the callback
-    // when i < j and rely on the fact that every colliding pair shares
-    // at least one cell. Duplicate callbacks for the same pair from
-    // different cells are possible; the caller must guard against that
-    // (e.g., by checking a visited set or by accepting idempotent work).
-    for (const auto& [key, indices] : cells_) {
+    // For each cell active in the current generation, test all pairs
+    // within it. Stale cells (generation mismatch) are skipped.
+    // Duplicate callbacks for the same pair from different cells are
+    // possible; the caller handles this via idempotency.
+    for (const auto& [key, cellData] : cells_) {
+        if (cellData.generation != generation_) continue;
+        const auto& indices = cellData.indices;
         const size_t n = indices.size();
         for (size_t a = 0; a < n; ++a) {
             for (size_t b = a + 1; b < n; ++b) {

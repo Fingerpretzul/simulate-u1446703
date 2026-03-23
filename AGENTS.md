@@ -29,4 +29,6 @@ Below will be a file tree showing the contents of ./docs. This should be kept up
 docs/
 ├── ARCHITECTURE.md   # Project structure, design decisions, class overview, collision algorithms
 └── BUILD.md          # Prerequisites, install steps, build commands, run instructions
+
+screenshots/          # BMP screenshots from headless runs (gitignored)
 ```

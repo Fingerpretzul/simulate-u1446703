@@ -34,6 +34,10 @@ public:
     // Draw FPS and ball count overlay in top-left corner.
     void drawHUD(float fps, int ballCount);
 
+    // Save the current framebuffer to a BMP file.
+    // Returns true on success.
+    bool saveScreenshot(const char* filename);
+
 private:
     SDL_Window*   window_   = nullptr;
     SDL_Renderer* renderer_ = nullptr;

@@ -2,57 +2,83 @@
 
 ## Prerequisites
 
-- macOS (tested on macOS 15 / Apple Silicon)
-- Homebrew
-- C++17 compiler (Apple Clang 17+)
+- C++17 compiler (GCC, Clang, or Apple Clang)
+- CMake 3.16+
+- SDL3 (built with `SDL_VIDEO=ON` for rendering support)
 
 ## Install Dependencies
 
+**macOS (Homebrew)**:
 ```bash
 brew install cmake sdl3
+```
+
+**Linux (from source)**:
+```bash
+# Build SDL3 with video support
+git clone https://github.com/libsdl-org/SDL.git --branch release-3.2.4
+cd SDL && mkdir build && cd build
+cmake .. -DSDL_VIDEO=ON -DSDL_OFFSCREEN=ON
+cmake --build . -j$(nproc)
+sudo cmake --install .
 ```
 
 ## Build
 
 ```bash
-mkdir -p build && cd build
-cmake ..
-cmake --build .
+cmake -S . -B build
+cmake --build build
 ```
 
 ## Run Tests
 
 ```bash
-cd build
-./tests
+./build/tests
 ```
 
-Expected: 31/31 tests pass.
+Expected: **35/35 tests pass**. Includes:
+- Vec2 math (6), gravity (2), ball-wall (5), ball-ball (4)
+- Restitution behavior (4), energy/settling (3), wall normals (2)
+- Collision edge cases (3), CCD (2), performance benchmark (1)
+- Large-scale 500-ball (2), full-scale 1000-ball (2)
 
 ## Run Simulator
 
+### Interactive mode
 ```bash
-cd build
-./simulator [restitution]
+./build/simulator [restitution]
+```
+
+### Headless mode (offscreen rendering + screenshots)
+```bash
+./build/simulator --headless [restitution] [frames] [screenshot_prefix]
 ```
 
 - `restitution`: float 0.0–1.0 (default 0.3)
-- `0.0` = perfectly inelastic, balls stop quickly
-- `0.3` = default, nice settling behavior
-- `0.9` = very bouncy, takes longer to settle
-- The automated test suite verifies both behaviors: lower restitution dissipates energy faster, and different restitution values still converge to the same settled packing footprint in the regression fixture
-- The settling regressions now cover both a plain container and a more simulator-like shelf scene with mixed ball radii, so the restitution invariant is checked against more realistic contact geometry
-- The collision suite also verifies that equal-mass head-on impacts produce the expected post-collision velocities, which guards the ball-ball restitution math directly
-- The wall-contact regressions now also verify exact endpoint overlaps and sealed corner joints, which guards the remaining wall-edge cases directly
-- The large-scale tests verify no-overlap and settling invariance at 500 balls, more closely matching the 1000-ball production scene
-- The performance test verifies that the 1000-ball physics step completes in well under 33ms (measured ~0.8 ms avg with idempotent spatial grid)
-- The FPS counter and ball count are displayed in the top-left corner of the window
-- Press **ESC** or **Q** to quit
+- `frames`: number of frames to simulate (default 600)
+- `screenshot_prefix`: path/prefix for BMP files (default "screenshot")
+
+### Controls (interactive mode)
+- **ESC** or **Q** to quit
+- FPS and ball count displayed in top-left corner
 
 ## Examples
 
 ```bash
-./simulator          # Default restitution 0.3
-./simulator 0.0      # Balls stop almost immediately
-./simulator 0.9      # Very bouncy
+./build/simulator              # Interactive, restitution 0.3
+./build/simulator 0.0          # Interactive, perfectly inelastic
+./build/simulator 0.9          # Interactive, very bouncy
+
+# Headless: 800 frames, save screenshots to ./screenshots/
+mkdir -p screenshots
+./build/simulator --headless 0.3 800 screenshots/sim_r03
+# Produces: sim_r03_initial.bmp, sim_r03_bouncing.bmp,
+#           sim_r03_settling.bmp, sim_r03_settled.bmp
 ```
+
+## Performance
+
+- 1000-ball physics step: ~0.8–0.9 ms/frame
+- 30 FPS budget: 33 ms → ~30× headroom for physics alone
+- Spatial hash grid: O(n) broadphase with O(1) clear via generation counter
+- CCD: negligible overhead (one dot product per ball-wall pair per substep)

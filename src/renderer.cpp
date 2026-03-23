@@ -97,6 +97,24 @@ void Renderer::drawHUD(float fps, int ballCount) {
     SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
 }
 
+// ── saveScreenshot — capture framebuffer to BMP ─────────────────────
+bool Renderer::saveScreenshot(const char* filename) {
+    // Create a surface matching the window dimensions, read pixels into it,
+    // then save as BMP. Works with offscreen/software renderers too.
+    SDL_Surface* surface = SDL_RenderReadPixels(renderer_, nullptr);
+    if (!surface) {
+        fprintf(stderr, "SDL_RenderReadPixels failed: %s\n", SDL_GetError());
+        return false;
+    }
+
+    bool ok = SDL_SaveBMP(surface, filename);
+    if (!ok) {
+        fprintf(stderr, "SDL_SaveBMP failed: %s\n", SDL_GetError());
+    }
+    SDL_DestroySurface(surface);
+    return ok;
+}
+
 // ── Precomputed unit circle for drawFilledCircle ────────────────────
 // Sine/cosine values and the triangle-fan index list are constant for
 // every circle, so we compute them once at startup. Only the vertex

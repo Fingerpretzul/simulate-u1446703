@@ -17,12 +17,10 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 void SpatialGrid::clear() {
-    // Reuse allocated bucket memory by clearing each vector rather than
-    // destroying the whole map. This avoids repeated heap allocation
-    // every solver iteration.
-    for (auto& [key, indices] : cells_) {
-        indices.clear();
-    }
+    // O(1) clear: just bump the generation counter. Stale cells are
+    // treated as empty by insert() (which clears-on-first-touch) and
+    // by forEachPair() (which skips cells with a stale generation).
+    ++generation_;
 }
 
 void SpatialGrid::insert(int index, const Ball& ball) {
@@ -35,7 +33,14 @@ void SpatialGrid::insert(int index, const Ball& ball) {
 
     for (int cy = y0; cy <= y1; ++cy) {
         for (int cx = x0; cx <= x1; ++cx) {
-            cells_[{cx, cy}].push_back(index);
+            CellData& cell = cells_[{cx, cy}];
+            // If this cell hasn't been touched this generation, clear it
+            // and stamp the current generation.
+            if (cell.generation != generation_) {
+                cell.indices.clear();
+                cell.generation = generation_;
+            }
+            cell.indices.push_back(index);
         }
     }
 }
@@ -51,6 +56,56 @@ static Vec2 closestPointOnSegment(const Vec2& p, const Vec2& a, const Vec2& b) {
     float t = (p - a).dot(ab) / abLenSq;
     t = std::max(0.0f, std::min(1.0f, t));
     return a + ab * t;
+}
+
+// ── CCD: swept circle vs line segment ───────────────────────────────
+// Given a ball moving from oldPos to newPos, determine if it crossed
+// through the wall during this substep. If it did, returns the
+// fraction t ∈ [0,1] at which the ball's edge first touches the wall's
+// infinite line. Returns -1 if no crossing occurs.
+//
+// This is a conservative check: it uses the wall's infinite line for
+// the swept test, then clamps to the segment in the caller. This
+// prevents tunneling through walls without the expense of a full
+// swept-circle-vs-segment intersection.
+static float sweptCircleVsLine(const Vec2& oldPos, const Vec2& newPos,
+                               float radius, const Wall& wall) {
+    // Wall normal (unit length, pointing "inward" for CW-wound boxes)
+    Vec2 n = wall.normal();
+
+    // Signed distance from old and new positions to the wall's infinite line.
+    // dist = dot(pos - wall.p1, normal)
+    float distOld = (oldPos - wall.p1).dot(n);
+    float distNew = (newPos - wall.p1).dot(n);
+
+    // If ball was already on the "wrong" side or didn't cross, skip.
+    // We only care about transitions from outside (dist > radius) to
+    // inside (dist < radius).
+    if (distOld >= radius && distNew >= radius) return -1.0f;
+    if (distOld <= -radius) return -1.0f; // Was already deep inside
+
+    // Find the fraction t where the signed distance equals radius
+    // (the ball's edge just touches the line).
+    float denom = distOld - distNew;
+    if (std::abs(denom) < 1e-8f) return -1.0f; // Parallel motion
+
+    float t = (distOld - radius) / denom;
+    if (t < 0.0f || t > 1.0f) return -1.0f;
+
+    // Verify the contact point is within the segment bounds (not just
+    // the infinite line). Project the ball center at time t onto the
+    // segment and check that the projection parameter is in [0,1].
+    Vec2 hitPos = oldPos + (newPos - oldPos) * t;
+    Vec2 wallDelta = wall.p2 - wall.p1;
+    float wallLenSq = wallDelta.lengthSq();
+    if (wallLenSq < 1e-12f) return -1.0f;
+    float s = (hitPos - wall.p1).dot(wallDelta) / wallLenSq;
+
+    // Allow a small margin beyond the endpoints to catch near-endpoint
+    // tunneling that would be resolved by the normal solver.
+    if (s < -0.05f || s > 1.05f) return -1.0f;
+
+    return t;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -103,11 +158,37 @@ void PhysicsWorld::integrateVelocities(float subDt) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// integratePositions — Euler step: pos += vel * dt
+// integratePositions — Euler step with CCD guard against wall tunneling.
+// After the naive pos += vel*dt, check each ball against every wall for
+// tunneling. If a ball would have crossed a wall, clip it back to the
+// wall surface and reflect its velocity. This handles the case where
+// substeps alone aren't enough (e.g., a ball accelerated to extreme
+// speed by many overlapping contacts in a single frame).
 // ═══════════════════════════════════════════════════════════════════════
 void PhysicsWorld::integratePositions(float subDt) {
     for (auto& b : balls) {
+        Vec2 oldPos = b.pos;
         b.pos += b.vel * subDt;
+
+        // CCD: check if the ball tunneled through any wall this substep.
+        for (const auto& wall : walls) {
+            float t = sweptCircleVsLine(oldPos, b.pos, b.radius, wall);
+            if (t >= 0.0f) {
+                // Move ball back to the contact point (edge touches wall)
+                b.pos = oldPos + (b.pos - oldPos) * t;
+
+                // Reflect velocity along wall normal
+                Vec2 n = wall.normal();
+                float velN = b.vel.dot(n);
+                if (velN < 0.0f) {
+                    Vec2 velNormal = n * velN;
+                    Vec2 velTangent = b.vel - velNormal;
+                    b.vel = velTangent * (1.0f - config.friction)
+                          - velNormal * config.restitution;
+                }
+                // Don't break — check remaining walls too (corner cases)
+            }
+        }
     }
 }
 

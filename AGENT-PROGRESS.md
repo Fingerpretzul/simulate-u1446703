@@ -295,3 +295,70 @@ Focused on performance optimization and large-scale test coverage:
 - Visual polish: ball outlines, restitution slider UI, color scheme options
 - Consider SIMD vectorization of the physics step for further performance gains
 - The `SpatialGrid::clear()` loop could be replaced with a generation counter on each cell to avoid iterating all cells
+
+## Iteration 8 — 2026-03-23 (Claude Opus 4.6)
+
+### What was done
+Major iteration addressing multiple long-standing items: SDL video support, CCD, 1000-ball tests, and headless screenshot capture.
+
+1. **SDL3 rebuilt with video support** (`/tmp/SDL3-3.2.4/build`):
+   - Reconfigured SDL3 with `SDL_VIDEO=ON`, `SDL_OFFSCREEN=ON`
+   - Rebuilt and reinstalled to `/home/developer/local/`
+   - The offscreen video driver now works, enabling headless rendering
+
+2. **Headless mode with screenshot capture** (`src/main.cpp`, `src/renderer.cpp`, `include/renderer.h`):
+   - Added `--headless` CLI flag: `./simulator --headless [restitution] [frames] [prefix]`
+   - Runs for a fixed number of frames with the offscreen video driver
+   - Saves BMP screenshots at 4 key moments: initial, bouncing, settling, settled
+   - Added `Renderer::saveScreenshot()` using `SDL_RenderReadPixels` + `SDL_SaveBMP`
+   - Progress reporting with kinetic energy every 10% of frames
+   - Captured screenshots at restitution 0.0, 0.3, 0.9 — verified pixel content confirms rendering and correct settling behavior
+
+3. **CCD (continuous collision detection)** (`src/physics.cpp`):
+   - Added `sweptCircleVsLine()` — swept-circle-vs-line-segment intersection test
+   - Integrated into `integratePositions()`: after the naive position update, each ball is checked against all walls for tunneling
+   - If tunneling detected: ball is clipped back to the contact point and velocity is reflected
+   - Negligible performance impact (~0.8→0.9 ms/frame, within measurement noise)
+
+4. **Full-scale 1000-ball tests** (`tests/test_physics.cpp`): 4 new tests (31→35 total):
+   - `ccd_prevents_fast_ball_tunneling`: ball at 10000 px/s with 1 substep caught by CCD
+   - `ccd_works_with_angled_walls`: CCD works with diagonal walls
+   - `full_scale_1000_balls_no_overlap_after_settling`: 1000 balls with shelves, zero overlaps after settling
+   - `full_scale_1000_balls_restitution_invariance`: 1000-ball settling-invariance across restitution 0.0/0.3/0.9
+
+5. **Spatial grid optimization** (`include/physics.h`, `src/physics.cpp`):
+   - Added `CellData` struct with generation stamp per cell
+   - `SpatialGrid::clear()` is now O(1) — just bumps the generation counter
+   - `insert()` lazily clears cells on first touch via generation check
+   - `forEachPair()` skips cells with stale generation
+
+6. **Documentation updates**:
+   - Updated ARCHITECTURE.md: CCD, generation counter, headless mode, performance table
+   - Updated BUILD.md: 35 tests, headless mode usage, Linux build instructions
+   - Updated TASKS.md: iteration 8 checklist, resolved 6 future-work items
+   - Updated AGENTS.md docs tree (screenshots/ directory)
+
+### Verification performed
+- `cmake -S . -B build` → configured
+- `cmake --build build` → compiled cleanly
+- `./build/tests` → **35/35 passed** (including 0.8–0.9 ms/frame perf benchmark)
+- `SDL_VIDEODRIVER=offscreen timeout 5 ./build/simulator 0.3` → runs successfully (exit 124 = timeout)
+- `./build/simulator --headless 0.3 600 screenshots/sim_r03` → 4 BMP screenshots saved
+- Screenshots verified: 1200×800 32bpp BMP, correct pixel content (7.2% non-background)
+- Y-distribution analysis: initial avg_y≈147 (top), settled avg_y≈440-460 (bottom) — confirms gravity + settling
+- Screenshots captured at restitution 0.0, 0.3, 0.9 — all produce valid, distinct renders
+
+### Current state
+- **35/35 tests pass** including full 1000-ball overlap and invariance checks
+- **CCD prevents tunneling** for extreme-speed balls, even with low substep counts
+- **Headless screenshot capture** works via offscreen video driver
+- **Spatial grid O(1) clear** via generation counter
+- **Physics step: 0.8–0.9 ms/frame** for 1000 balls (~30× under 30 FPS budget)
+- **12 BMP screenshots** saved documenting simulation at 3 restitution values × 4 stages
+
+### What the next iteration should focus on
+- Visual polish: ball outlines, restitution slider UI, color scheme options
+- Interactive display: need an environment with X11/Wayland for interactive mode
+- Consider SIMD vectorization of physics step inner loops
+- Add `.gitignore` for screenshots/ and build/ if not already present
+- Consider adding a continuous integration (CI) workflow for automated testing
