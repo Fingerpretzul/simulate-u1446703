@@ -35,6 +35,15 @@ struct Vec2 {
     }
 };
 
+// ── Ball color ─────────────────────────────────────────────────────
+// RGB color for rendering. If hasColor is false, the renderer uses its
+// default speed-based coloring. CSV I/O and the color-assign tool set
+// this field so balls can carry persistent colors through the pipeline.
+struct BallColor {
+    uint8_t r = 0, g = 0, b = 0;
+    bool hasColor = false; // false → use default speed-based coloring
+};
+
 // ── Ball ────────────────────────────────────────────────────────────
 // A circular body affected by gravity and collisions.
 struct Ball {
@@ -42,6 +51,7 @@ struct Ball {
     Vec2 vel;       // Velocity in pixels/second
     float radius;   // Radius in pixels
     float mass;     // Mass (proportional to area by default)
+    BallColor color; // Optional persistent color for CSV/rendering
 
     Ball() : radius(5.0f), mass(1.0f) {}
     Ball(Vec2 pos, float radius)

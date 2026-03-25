@@ -1,5 +1,18 @@
 # Tasks
 
+## Completed — Iteration 9 (2026-03-23)
+
+- [x] Add `BallColor` struct and `color` field to `Ball` for persistent ball coloring
+- [x] Update renderer to use ball's assigned color when `hasColor` is true
+- [x] Implement `csv_io.h`/`csv_io.cpp`: `loadSceneFromCSV()`, `saveSceneToCSV()`, `splitCSVLine()`
+- [x] CSV format supports balls (type,x,y,radius,r,g,b) and walls (type,x1,y1,x2,y2), comments, headers
+- [x] Add `--load-csv` and `--save-csv` CLI options to simulator (both headless and interactive)
+- [x] Create `color_assign` tool: loads CSV + BMP, simulates, samples image at final positions, writes colored CSV
+- [x] Add `csv_io_lib` static library and `color_assign` executable to CMakeLists.txt
+- [x] Add 8 new tests (35→43): CSV split, load/save roundtrip, comments, missing file, ball color default
+- [x] Build, verify 43/43 tests pass, headless CSV workflow verified end-to-end
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, AGENTS.md, AGENT-PROGRESS.md, TASKS.md)
+
 ## Completed — Iteration 8 (2026-03-23)
 
 - [x] Rebuild SDL3 with video support enabled (`SDL_VIDEO=ON`)
@@ -88,6 +101,10 @@
 - [x] ~~**SDL3 video support**~~ — Rebuilt SDL3 with `SDL_VIDEO=ON` in iteration 8; offscreen rendering + BMP screenshots now work
 - [x] ~~**Screen recording**~~ — Headless screenshot capture implemented in iteration 8; screenshots at 3 restitution values saved
 - [x] ~~**Spatial grid clear optimization**~~ — Generation counter replaces per-cell iteration (iteration 8)
+- [x] ~~**CSV scene I/O**~~ — Load/save balls+walls from CSV; supports colors, comments, headers (iteration 9)
+- [x] ~~**Color assignment tool**~~ — `color_assign` maps final ball positions to BMP image colors (iteration 9)
 - [ ] **Visual polish**: Ball outlines, restitution slider UI, color scheme options
 - [ ] **SIMD vectorization**: Consider SIMD for the physics step inner loops
 - [ ] **Interactive display**: Need an environment with a real display server (X11/Wayland) for interactive mode
+- [ ] **CSV scene generator**: Tool to procedurally generate initial scene CSVs with various layouts
+- [ ] **PNG image support**: `color_assign` currently requires BMP; could add PNG via SDL_image

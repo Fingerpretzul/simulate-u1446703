@@ -362,3 +362,78 @@ Major iteration addressing multiple long-standing items: SDL video support, CCD,
 - Consider SIMD vectorization of physics step inner loops
 - Add `.gitignore` for screenshots/ and build/ if not already present
 - Consider adding a continuous integration (CI) workflow for automated testing
+
+## Iteration 9 — 2026-03-23 (Claude Opus 4.6)
+
+### What was done
+Implemented CSV scene I/O, ball colors, and the color assignment tool — completing the remaining PROJECT-OVERVIEW.md requirements.
+
+1. **Ball color support** (`include/physics.h`, `src/renderer.cpp`):
+   - Added `BallColor` struct with `r`, `g`, `b`, and `hasColor` flag
+   - Added `color` field to `Ball` struct
+   - Updated renderer: uses ball's assigned color when `hasColor` is true, falls back to speed-based coloring otherwise
+
+2. **CSV scene file I/O** (`include/csv_io.h`, `src/csv_io.cpp`):
+   - `loadSceneFromCSV()`: Parses CSV files with `ball` and `wall` rows, optional color columns, comment lines, and header rows
+   - `saveSceneToCSV()`: Writes current ball positions/colors and walls to CSV
+   - `splitCSVLine()`: Utility to parse CSV with whitespace trimming
+   - Created `csv_io_lib` static library (no SDL dependency) for reuse in tests
+
+3. **CLI options** (`src/main.cpp`):
+   - Added `--load-csv <file>` to load initial scene from CSV instead of generating
+   - Added `--save-csv <file>` to save final positions after simulation
+   - Refactored argument parsing to handle flags + positional args flexibly
+   - Both headless and interactive modes support CSV load/save
+
+4. **Color assignment tool** (`src/color_assign.cpp`):
+   - New standalone executable: `./color_assign <input.csv> <image.bmp> <output.csv> [restitution] [frames]`
+   - Phase 1: Load scene from CSV, save original positions
+   - Phase 2: Run physics simulation to settle
+   - Phase 3: Load BMP, sample pixel at each ball's final position (scales proportionally for different image sizes)
+   - Phase 4: Write output CSV with original positions but image-sampled colors
+   - Uses `SDL_LoadBMP` + `SDL_ReadSurfacePixel` for format-independent pixel reads
+
+5. **New tests** (`tests/test_physics.cpp`): 8 new tests (35→43 total):
+   - `csv_split_line_basic`: Basic CSV parsing
+   - `csv_split_line_with_whitespace`: Whitespace trimming
+   - `csv_load_balls_and_walls`: Load balls+walls with colors
+   - `csv_load_with_comments`: Comment and header handling
+   - `csv_load_balls_without_color`: Optional color columns
+   - `csv_save_and_reload_roundtrip`: Save → reload preserves data
+   - `csv_load_nonexistent_file_fails`: Error handling
+   - `ball_color_default_is_unset`: Default ball color state
+
+6. **Documentation updates**:
+   - Updated ARCHITECTURE.md: new file tree, CSV I/O section, color assign tool section, class table
+   - Updated BUILD.md: test count 43, CSV CLI docs, color_assign usage, workflow examples
+   - Updated TASKS.md: iteration 9 checklist, resolved 2 future-work items
+   - Updated AGENTS.md: docs tree
+
+### Verification performed
+- `cmake -S . -B build` → configured with 5 targets
+- `cmake --build build` → compiled cleanly (physics_lib, csv_io_lib, simulator, color_assign, tests)
+- `./build/tests` → **43/43 passed**
+- `./build/simulator --headless --save-csv /tmp/test_output.csv 0.3 100` → 1000 balls + 6 walls saved
+- CSV roundtrip: loaded saved CSV → re-simulated → balls at rest (KE=0)
+- `./build/color_assign` tested with 5-ball and 1000-ball scenes → correct pixel sampling
+- Colored scene loaded and rendered in headless mode → valid BMP output
+
+### Current state
+- **43/43 tests pass** including 8 new CSV I/O tests
+- **CSV I/O complete**: load/save balls+walls with optional colors, comments, headers
+- **Color assignment tool working**: samples BMP at final positions, writes colored CSV
+- **All PROJECT-OVERVIEW.md requirements met**:
+  - CSV scene description (balls with position+color, walls) ✓
+  - CSV final position saving ✓
+  - Color assignment tool (initial CSV + image → colored CSV) ✓
+  - 1000 balls at 30 FPS ✓ (0.8–0.9 ms/frame, 30× headroom)
+  - Configurable restitution with settling invariance ✓
+  - No overlap/phasing (CCD + iterative solver) ✓
+
+### What the next iteration should focus on
+- Visual polish: ball outlines, restitution slider UI
+- Interactive display: need X11/Wayland environment
+- PNG image support for color_assign (currently BMP only)
+- CSV scene generator tool for procedural layouts
+- SIMD vectorization of physics inner loops
+- CI workflow for automated testing

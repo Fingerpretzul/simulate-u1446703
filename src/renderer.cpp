@@ -64,21 +64,51 @@ void Renderer::present() {
 }
 
 void Renderer::draw(const PhysicsWorld& world) {
-    // Draw walls as white lines
-    SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
+    // Draw walls as thick white lines (rendered as quads for visibility).
+    // Each wall is drawn as a filled rectangle oriented along the wall segment,
+    // with a configurable half-width for thickness.
+    constexpr float WALL_HALF_WIDTH = 2.0f; // 4px total thickness
     for (const auto& wall : world.walls) {
-        SDL_RenderLine(renderer_, wall.p1.x, wall.p1.y, wall.p2.x, wall.p2.y);
+        // Compute a perpendicular offset from the wall direction
+        Vec2 d = wall.p2 - wall.p1;
+        float len = d.length();
+        if (len < 1e-6f) continue;
+        Vec2 perp = {-d.y / len * WALL_HALF_WIDTH, d.x / len * WALL_HALF_WIDTH};
+
+        // 4 corners of the thick wall quad
+        SDL_Vertex wallVerts[4];
+        SDL_FColor wallColor = {0.78f, 0.78f, 0.78f, 1.0f}; // light gray
+
+        wallVerts[0].position = {wall.p1.x - perp.x, wall.p1.y - perp.y};
+        wallVerts[0].color = wallColor;
+        wallVerts[1].position = {wall.p1.x + perp.x, wall.p1.y + perp.y};
+        wallVerts[1].color = wallColor;
+        wallVerts[2].position = {wall.p2.x + perp.x, wall.p2.y + perp.y};
+        wallVerts[2].color = wallColor;
+        wallVerts[3].position = {wall.p2.x - perp.x, wall.p2.y - perp.y};
+        wallVerts[3].color = wallColor;
+
+        // Two triangles to fill the quad
+        int wallIndices[6] = {0, 1, 2, 0, 2, 3};
+        SDL_RenderGeometry(renderer_, nullptr, wallVerts, 4, wallIndices, 6);
     }
 
-    // Draw balls — color based on speed for visual interest
+    // Draw balls — use persistent color if set, else speed-based coloring
     for (const auto& ball : world.balls) {
-        float speed = ball.vel.length();
-        // Map speed to color: slow=blue, medium=green, fast=red
-        float t = std::min(speed / 300.0f, 1.0f);
-        uint8_t r = static_cast<uint8_t>(50 + 200 * t);
-        uint8_t g = static_cast<uint8_t>(100 + 100 * (1.0f - std::abs(t - 0.5f) * 2.0f));
-        uint8_t b = static_cast<uint8_t>(200 * (1.0f - t));
-
+        uint8_t r, g, b;
+        if (ball.color.hasColor) {
+            // Use the ball's assigned color (from CSV or color-assign tool)
+            r = ball.color.r;
+            g = ball.color.g;
+            b = ball.color.b;
+        } else {
+            // Default: map speed to color (slow=blue, medium=green, fast=red)
+            float speed = ball.vel.length();
+            float t = std::min(speed / 300.0f, 1.0f);
+            r = static_cast<uint8_t>(50 + 200 * t);
+            g = static_cast<uint8_t>(100 + 100 * (1.0f - std::abs(t - 0.5f) * 2.0f));
+            b = static_cast<uint8_t>(200 * (1.0f - t));
+        }
         drawFilledCircle(ball.pos.x, ball.pos.y, ball.radius, r, g, b);
     }
 }

@@ -6,20 +6,26 @@
 //
 // Usage: ./simulator [restitution]
 //        ./simulator --headless [restitution] [frames] [screenshot_prefix]
+//        ./simulator --load-csv input.csv [--save-csv output.csv] [restitution]
+//        ./simulator --headless --load-csv input.csv --save-csv output.csv [restitution] [frames]
 //
 //   restitution: float in [0, 1], default 0.3
 //   --headless:  Run for a fixed number of frames using the offscreen driver,
 //                saving BMP screenshots at key moments (start, mid, settled).
+//   --load-csv:  Load initial scene from a CSV file instead of generating one.
+//   --save-csv:  Save final ball positions to a CSV file after simulation.
 //   frames:      Number of frames to simulate in headless mode (default 600).
 //   screenshot_prefix: Prefix for screenshot filenames (default "screenshot").
 
 #include "physics.h"
 #include "renderer.h"
+#include "csv_io.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
 #include <ctime>
 #include <cstring>
+#include <vector>
 
 // ── Scene setup constants ───────────────────────────────────────────
 constexpr int   NUM_BALLS       = 1000;
@@ -90,9 +96,12 @@ static void setupBalls(PhysicsWorld& world) {
 // Headless mode — run for a fixed number of frames with the offscreen
 // video driver, saving BMP screenshots at key moments.
 // ═══════════════════════════════════════════════════════════════════════
-static int runHeadless(float restitution, int totalFrames, const char* prefix) {
+static int runHeadless(float restitution, int totalFrames, const char* prefix,
+                       const char* loadCSV, const char* saveCSV) {
     printf("Headless mode: %d frames, restitution=%.2f, prefix='%s'\n",
            totalFrames, restitution, prefix);
+    if (loadCSV) printf("  Loading scene from: %s\n", loadCSV);
+    if (saveCSV) printf("  Will save final scene to: %s\n", saveCSV);
 
     // Force offscreen driver so we get a real rendering surface
     // without needing a display server.
@@ -106,8 +115,15 @@ static int runHeadless(float restitution, int totalFrames, const char* prefix) {
     world.config.friction    = 0.1f;
     world.config.sleepSpeed  = 2.0f;
 
-    setupWalls(world);
-    setupBalls(world);
+    if (loadCSV) {
+        if (!loadSceneFromCSV(loadCSV, world)) {
+            fprintf(stderr, "Failed to load CSV scene from '%s'\n", loadCSV);
+            return 1;
+        }
+    } else {
+        setupWalls(world);
+        setupBalls(world);
+    }
 
     Renderer renderer;
     if (!renderer.init()) {
@@ -156,6 +172,14 @@ static int runHeadless(float restitution, int totalFrames, const char* prefix) {
         }
     }
 
+    // Save final positions to CSV if requested
+    if (saveCSV) {
+        if (!saveSceneToCSV(saveCSV, world)) {
+            fprintf(stderr, "Failed to save CSV scene to '%s'\n", saveCSV);
+            return 1;
+        }
+    }
+
     printf("Headless run complete.\n");
     return 0;
 }
@@ -166,30 +190,43 @@ static int runHeadless(float restitution, int totalFrames, const char* prefix) {
 int main(int argc, char* argv[]) {
     srand(static_cast<unsigned>(time(nullptr)));
 
-    // Check for --headless flag
+    // ── Parse CLI arguments ─────────────────────────────────────────
+    // Flags: --headless, --load-csv <file>, --save-csv <file>
+    // Positional (after flags): [restitution] [frames] [screenshot_prefix]
     bool headless = false;
-    int argOffset = 1;
-    if (argc >= 2 && strcmp(argv[1], "--headless") == 0) {
-        headless = true;
-        argOffset = 2;
+    const char* loadCSV = nullptr;
+    const char* saveCSV = nullptr;
+
+    // Collect positional arguments (non-flag arguments)
+    std::vector<const char*> positional;
+
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--headless") == 0) {
+            headless = true;
+        } else if (strcmp(argv[i], "--load-csv") == 0 && i + 1 < argc) {
+            loadCSV = argv[++i];
+        } else if (strcmp(argv[i], "--save-csv") == 0 && i + 1 < argc) {
+            saveCSV = argv[++i];
+        } else {
+            positional.push_back(argv[i]);
+        }
     }
 
-    // Parse restitution (first positional arg after flags)
+    // Parse positional args: [restitution] [frames] [screenshot_prefix]
     float restitution = 0.3f;
-    if (argc > argOffset) {
-        restitution = static_cast<float>(atof(argv[argOffset]));
+    if (positional.size() > 0) {
+        restitution = static_cast<float>(atof(positional[0]));
         if (restitution < 0.0f) restitution = 0.0f;
         if (restitution > 1.0f) restitution = 1.0f;
     }
 
     if (headless) {
-        // Parse optional frame count and screenshot prefix
         int frames = 600;
         const char* prefix = "screenshot";
-        if (argc > argOffset + 1) frames = atoi(argv[argOffset + 1]);
-        if (argc > argOffset + 2) prefix = argv[argOffset + 2];
+        if (positional.size() > 1) frames = atoi(positional[1]);
+        if (positional.size() > 2) prefix = positional[2];
         if (frames < 1) frames = 600;
-        return runHeadless(restitution, frames, prefix);
+        return runHeadless(restitution, frames, prefix, loadCSV, saveCSV);
     }
 
     printf("Physics Simulator — restitution = %.2f\n", restitution);
@@ -204,8 +241,15 @@ int main(int argc, char* argv[]) {
     world.config.friction    = 0.1f;
     world.config.sleepSpeed  = 2.0f;
 
-    setupWalls(world);
-    setupBalls(world);
+    if (loadCSV) {
+        if (!loadSceneFromCSV(loadCSV, world)) {
+            fprintf(stderr, "Failed to load CSV scene from '%s'\n", loadCSV);
+            return 1;
+        }
+    } else {
+        setupWalls(world);
+        setupBalls(world);
+    }
 
     // Initialize renderer
     Renderer renderer;
@@ -245,6 +289,14 @@ int main(int argc, char* argv[]) {
         renderer.draw(world);
         renderer.drawHUD(fpsSmoothed, static_cast<int>(world.balls.size()));
         renderer.present();
+    }
+
+    // Save final positions to CSV if requested
+    if (saveCSV) {
+        if (!saveSceneToCSV(saveCSV, world)) {
+            fprintf(stderr, "Failed to save CSV scene to '%s'\n", saveCSV);
+            return 1;
+        }
     }
 
     return 0;

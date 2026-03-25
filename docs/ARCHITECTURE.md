@@ -4,16 +4,19 @@
 
 ```
 simulate-u1446703/
-├── CMakeLists.txt          # Build configuration
+├── CMakeLists.txt          # Build configuration (4 targets: physics_lib, csv_io_lib, simulator, color_assign, tests)
 ├── include/
-│   ├── physics.h           # Core physics types: Vec2, Ball, Wall, PhysicsWorld, SpatialGrid
-│   └── renderer.h          # SDL3 renderer wrapper
+│   ├── physics.h           # Core physics types: Vec2, Ball, BallColor, Wall, PhysicsWorld, SpatialGrid
+│   ├── renderer.h          # SDL3 renderer wrapper
+│   └── csv_io.h            # CSV scene file I/O (load/save balls + walls)
 ├── src/
 │   ├── physics.cpp         # Physics engine implementation (CCD, spatial grid, solvers)
 │   ├── renderer.cpp        # SDL3 rendering (circles, lines, HUD, screenshots)
-│   └── main.cpp            # Entry point, scene setup, main loop, headless mode
+│   ├── csv_io.cpp          # CSV scene loading/saving implementation
+│   ├── color_assign.cpp    # Color assignment tool (maps final positions to image colors)
+│   └── main.cpp            # Entry point, scene setup, main loop, headless mode, CSV CLI
 ├── tests/
-│   └── test_physics.cpp    # 35 unit tests for physics engine
+│   └── test_physics.cpp    # 43 unit tests (physics + CSV I/O)
 ├── screenshots/            # BMP screenshots from headless runs (gitignored)
 ├── docs/
 │   ├── ARCHITECTURE.md     # This file
@@ -45,11 +48,32 @@ simulate-u1446703/
 - FPS + ball count HUD overlay via `SDL_RenderDebugText` (scaled 2×).
 - `saveScreenshot()` captures the framebuffer to BMP via `SDL_RenderReadPixels` + `SDL_SaveBMP`.
 
+### CSV I/O (csv_io.h / csv_io.cpp)
+
+- **File format**: Single CSV file holds both balls and walls, distinguished by a `type` column.
+- Ball rows: `ball,x,y,radius,r,g,b` (color columns optional on load).
+- Wall rows: `wall,x1,y1,x2,y2`.
+- Comments (lines starting with `#`) and a header row are supported.
+- `loadSceneFromCSV()` clears existing world data before loading.
+- `saveSceneToCSV()` writes current ball positions and colors.
+- Roundtrip tested: save → reload preserves all data within float precision.
+
+### Color Assignment Tool (color_assign.cpp)
+
+- Standalone executable: `./color_assign <input.csv> <image.bmp> <output.csv> [restitution] [frames]`
+- Phase 1: Load initial scene from CSV, save original ball positions.
+- Phase 2: Run physics simulation for specified frames until balls settle.
+- Phase 3: Load BMP image, sample pixel color at each ball's final world position (scaled proportionally if image size differs from window).
+- Phase 4: Write output CSV with original starting positions but colors sampled from the image at final positions.
+- Uses `SDL_LoadBMP` + `SDL_ReadSurfacePixel` for format-independent pixel sampling.
+
 ### Scene Setup (main.cpp)
 
 - Rectangular container with two angled shelves for visual interest.
 - 1000 balls placed in a grid with slight random offsets and velocities.
 - Restitution configurable via command-line argument: `./simulator [restitution]`
+- **CSV loading**: `--load-csv <file>` loads scene from CSV instead of generating.
+- **CSV saving**: `--save-csv <file>` saves final ball positions after simulation.
 - **Headless mode**: `./simulator --headless [restitution] [frames] [prefix]` runs for a fixed number of frames using the offscreen video driver, saving BMP screenshots at key moments (initial, bouncing, settling, settled).
 
 ## Key Classes
@@ -57,7 +81,8 @@ simulate-u1446703/
 | Class | File | Purpose |
 |-------|------|---------|
 | `Vec2` | physics.h | 2D vector math (add, sub, dot, normalize, etc.) |
-| `Ball` | physics.h | Circular body with position, velocity, radius, mass |
+| `BallColor` | physics.h | RGB color + hasColor flag for persistent ball coloring |
+| `Ball` | physics.h | Circular body with position, velocity, radius, mass, color |
 | `Wall` | physics.h | Immovable line segment with outward normal |
 | `PhysicsConfig` | physics.h | Simulation parameters (gravity, restitution, substeps, etc.) |
 | `SpatialGrid` | physics.h/cpp | Spatial hash grid with generation counter for broadphase |
@@ -65,6 +90,9 @@ simulate-u1446703/
 | `CellData` | physics.h | Per-cell ball indices + generation stamp |
 | `PhysicsWorld` | physics.h/cpp | Owns balls+walls, runs simulation step with CCD |
 | `Renderer` | renderer.h/cpp | SDL3 window, drawing, event handling, FPS HUD, screenshots |
+| `loadSceneFromCSV` | csv_io.h/cpp | Load balls + walls from CSV file |
+| `saveSceneToCSV` | csv_io.h/cpp | Save current scene to CSV file |
+| `splitCSVLine` | csv_io.h/cpp | Parse CSV line into trimmed tokens |
 
 ## Collision Resolution Algorithm
 

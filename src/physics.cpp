@@ -128,9 +128,15 @@ void PhysicsWorld::step(float dt) {
             solveBallWallCollisions();
             solveBallBallCollisions();
         }
-
-        applySleepThreshold();
     }
+
+    // Apply sleep threshold ONCE per frame, after all substeps complete.
+    // Previously this ran per-substep, which prevented balls from
+    // accumulating velocity from gravity (500 px/s² * 1/480s = ~1 px/s
+    // per substep, below the 2 px/s threshold). Moving it here allows
+    // velocity to build across substeps while still zeroing micro-motion
+    // at frame boundaries.
+    applySleepThreshold();
 }
 
 // ═══════════════════════════════════════════════════════════════════════

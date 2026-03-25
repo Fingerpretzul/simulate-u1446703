@@ -36,11 +36,12 @@ cmake --build build
 ./build/tests
 ```
 
-Expected: **35/35 tests pass**. Includes:
+Expected: **43/43 tests pass**. Includes:
 - Vec2 math (6), gravity (2), ball-wall (5), ball-ball (4)
 - Restitution behavior (4), energy/settling (3), wall normals (2)
 - Collision edge cases (3), CCD (2), performance benchmark (1)
 - Large-scale 500-ball (2), full-scale 1000-ball (2)
+- CSV I/O (6), ball color (2)
 
 ## Run Simulator
 
@@ -58,6 +59,25 @@ Expected: **35/35 tests pass**. Includes:
 - `frames`: number of frames to simulate (default 600)
 - `screenshot_prefix`: path/prefix for BMP files (default "screenshot")
 
+### CSV scene loading and saving
+```bash
+# Load scene from CSV
+./build/simulator --load-csv scene.csv [restitution]
+
+# Save final positions to CSV
+./build/simulator --headless --save-csv output.csv [restitution] [frames]
+
+# Load from CSV, simulate, save result
+./build/simulator --headless --load-csv input.csv --save-csv output.csv 0.3 600
+```
+
+### Color assignment tool
+```bash
+./build/color_assign <input.csv> <image.bmp> <output.csv> [restitution] [frames]
+```
+
+Runs the simulation on the input scene, then assigns each ball a color based on the pixel in the BMP image at the ball's final position. Writes the original scene with new colors to the output CSV.
+
 ### Controls (interactive mode)
 - **ESC** or **Q** to quit
 - FPS and ball count displayed in top-left corner
@@ -74,6 +94,11 @@ mkdir -p screenshots
 ./build/simulator --headless 0.3 800 screenshots/sim_r03
 # Produces: sim_r03_initial.bmp, sim_r03_bouncing.bmp,
 #           sim_r03_settling.bmp, sim_r03_settled.bmp
+
+# CSV workflow: generate scene → simulate → color from image
+./build/simulator --headless --save-csv initial.csv 0.3 600 screenshots/sim
+./build/color_assign initial.csv screenshots/sim_settled.bmp colored.csv 0.3 600
+./build/simulator --headless --load-csv colored.csv 0.3 10 screenshots/colored
 ```
 
 ## Performance

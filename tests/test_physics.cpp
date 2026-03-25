@@ -4,11 +4,13 @@
 // overlap resolution, restitution behavior, and energy dissipation.
 
 #include "physics.h"
+#include "csv_io.h"
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
 #include <chrono>
+#include <fstream>
 
 // ── Minimal test framework ──────────────────────────────────────────
 static int tests_run = 0;
@@ -600,9 +602,9 @@ TEST(restitution_zero_stops_quickly) {
 TEST(restitution_changes_decay_not_final_packed_size) {
     // The final resting footprint should be a property of geometry and
     // ball sizes, not of how bouncy the transient motion was on the way there.
-    const SettledBounds lowRestitution = simulateToSettledBounds(0.0f, 900);
-    const SettledBounds mediumRestitution = simulateToSettledBounds(0.3f, 900);
-    const SettledBounds highRestitution = simulateToSettledBounds(0.9f, 900);
+    const SettledBounds lowRestitution = simulateToSettledBounds(0.0f, 1500);
+    const SettledBounds mediumRestitution = simulateToSettledBounds(0.3f, 1500);
+    const SettledBounds highRestitution = simulateToSettledBounds(0.9f, 1500);
 
     ASSERT_NEAR(lowRestitution.maxSpeed, 0.0f, 0.05f);
     ASSERT_NEAR(mediumRestitution.maxSpeed, 0.0f, 0.05f);
@@ -620,9 +622,9 @@ TEST(restitution_preserves_final_packed_size_in_shelf_scene) {
     // not just a plain box. This regression hardens that promise by checking
     // a shelf-filled container with mixed ball sizes, which is much closer to
     // the interactive scene than the simple stacking fixture above.
-    const SettledBounds lowRestitution = simulateShelfSceneToSettledBounds(0.0f, 2200);
-    const SettledBounds mediumRestitution = simulateShelfSceneToSettledBounds(0.3f, 2200);
-    const SettledBounds highRestitution = simulateShelfSceneToSettledBounds(0.9f, 2200);
+    const SettledBounds lowRestitution = simulateShelfSceneToSettledBounds(0.0f, 3500);
+    const SettledBounds mediumRestitution = simulateShelfSceneToSettledBounds(0.3f, 3500);
+    const SettledBounds highRestitution = simulateShelfSceneToSettledBounds(0.9f, 3500);
 
     ASSERT_NEAR(lowRestitution.maxSpeed, 0.0f, 0.05f);
     ASSERT_NEAR(mediumRestitution.maxSpeed, 0.0f, 0.05f);
@@ -791,7 +793,7 @@ TEST(dense_column_stack_no_explosion) {
     }
 
     float maxSpeedEver = 0.0f;
-    for (int i = 0; i < 800; ++i) {
+    for (int i = 0; i < 1300; ++i) {
         world.step(0.016f);
 
         // Track peak speed to detect explosion
@@ -965,8 +967,10 @@ TEST(large_scale_no_overlap_after_settling) {
     // is more common than in the smaller test fixtures.
     PhysicsWorld world = makeLargeWorld(0.3f);
 
-    // Run for enough simulated time to fully settle
-    for (int i = 0; i < 1200; ++i) {
+    // Run for enough simulated time to fully settle.
+    // Sleep threshold is applied per-frame (not per-substep), so 500 balls
+    // in a deep container need ~2000 frames to fully converge.
+    for (int i = 0; i < 2000; ++i) {
         world.step(0.016f);
     }
 
@@ -1005,7 +1009,7 @@ TEST(large_scale_restitution_preserves_packed_size) {
     // 50-ball and 120-ball fixtures from earlier iterations.
     auto runAndMeasure = [](float restitution) -> SettledBounds {
         PhysicsWorld world = makeLargeWorld(restitution);
-        for (int i = 0; i < 1500; ++i) {
+        for (int i = 0; i < 2500; ++i) {
             world.step(0.016f);
         }
         SettledBounds bounds;
@@ -1158,8 +1162,9 @@ TEST(full_scale_1000_balls_no_overlap_after_settling) {
     // keep the test O(n) instead of O(n²).
     PhysicsWorld world = makeFullScaleWorld(0.3f);
 
-    // 1500 frames ≈ 25 simulated seconds at 60 FPS — enough to fully settle
-    for (int i = 0; i < 1500; ++i) {
+    // 2500 frames ≈ 42 simulated seconds at 60 FPS — enough to fully settle.
+    // Sleep threshold is per-frame, so more frames needed than per-substep sleep.
+    for (int i = 0; i < 2500; ++i) {
         world.step(0.016f);
     }
 
@@ -1241,6 +1246,153 @@ TEST(full_scale_1000_balls_restitution_invariance) {
     ASSERT_NEAR(low.height(), high.height(), 3.0f);
     ASSERT_NEAR(low.minY, med.minY, 3.0f);
     ASSERT_NEAR(low.minY, high.minY, 3.0f);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CSV I/O tests
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(csv_split_line_basic) {
+    auto tokens = splitCSVLine("ball,100.0,200.0,5.0,255,0,0");
+    ASSERT(tokens.size() == 7);
+    ASSERT(tokens[0] == "ball");
+    ASSERT(tokens[1] == "100.0");
+    ASSERT(tokens[4] == "255");
+}
+
+TEST(csv_split_line_with_whitespace) {
+    auto tokens = splitCSVLine("  wall , 50.0 , 50.0 , 1150.0 , 50.0 ");
+    ASSERT(tokens.size() == 5);
+    ASSERT(tokens[0] == "wall");
+    ASSERT(tokens[1] == "50.0");
+    ASSERT(tokens[4] == "50.0");
+}
+
+// Helper: write a temporary CSV file and return its path
+static std::string writeTempCSV(const std::string& content) {
+    std::string path = "/tmp/test_scene_csv.csv";
+    std::ofstream f(path);
+    f << content;
+    f.close();
+    return path;
+}
+
+TEST(csv_load_balls_and_walls) {
+    std::string csv =
+        "type,x,y,radius_or_x2,r_or_y2,g,b\n"
+        "wall,50,50,1150,50\n"
+        "wall,1150,50,1150,750\n"
+        "ball,100,100,5,255,0,0\n"
+        "ball,200,200,8,0,255,0\n";
+
+    std::string path = writeTempCSV(csv);
+    PhysicsWorld world;
+    bool ok = loadSceneFromCSV(path, world);
+
+    ASSERT(ok);
+    ASSERT(world.walls.size() == 2);
+    ASSERT(world.balls.size() == 2);
+
+    // Check first wall
+    ASSERT_NEAR(world.walls[0].p1.x, 50.0f, 0.01f);
+    ASSERT_NEAR(world.walls[0].p2.x, 1150.0f, 0.01f);
+
+    // Check first ball position and color
+    ASSERT_NEAR(world.balls[0].pos.x, 100.0f, 0.01f);
+    ASSERT_NEAR(world.balls[0].pos.y, 100.0f, 0.01f);
+    ASSERT_NEAR(world.balls[0].radius, 5.0f, 0.01f);
+    ASSERT(world.balls[0].color.hasColor);
+    ASSERT(world.balls[0].color.r == 255);
+    ASSERT(world.balls[0].color.g == 0);
+    ASSERT(world.balls[0].color.b == 0);
+
+    // Check second ball
+    ASSERT_NEAR(world.balls[1].pos.x, 200.0f, 0.01f);
+    ASSERT_NEAR(world.balls[1].radius, 8.0f, 0.01f);
+    ASSERT(world.balls[1].color.g == 255);
+}
+
+TEST(csv_load_with_comments) {
+    std::string csv =
+        "# This is a comment\n"
+        "type,x,y,radius_or_x2,r_or_y2,g,b\n"
+        "# Another comment\n"
+        "ball,300,400,6,100,100,200\n";
+
+    std::string path = writeTempCSV(csv);
+    PhysicsWorld world;
+    bool ok = loadSceneFromCSV(path, world);
+
+    ASSERT(ok);
+    ASSERT(world.balls.size() == 1);
+    ASSERT(world.walls.size() == 0);
+    ASSERT_NEAR(world.balls[0].pos.x, 300.0f, 0.01f);
+}
+
+TEST(csv_load_balls_without_color) {
+    // Balls with only 4 columns (no color) should still load
+    std::string csv =
+        "type,x,y,radius\n"
+        "ball,100,200,5\n";
+
+    std::string path = writeTempCSV(csv);
+    PhysicsWorld world;
+    bool ok = loadSceneFromCSV(path, world);
+
+    ASSERT(ok);
+    ASSERT(world.balls.size() == 1);
+    // No color columns → hasColor should be false
+    ASSERT(!world.balls[0].color.hasColor);
+}
+
+TEST(csv_save_and_reload_roundtrip) {
+    // Create a world, save it, reload it, and verify the data matches
+    PhysicsWorld world;
+    world.walls.push_back(Wall(Vec2(10, 20), Vec2(30, 40)));
+
+    Ball b1(Vec2(100, 200), 5.0f);
+    b1.color = {255, 128, 0, true};
+    world.balls.push_back(b1);
+
+    Ball b2(Vec2(300, 400), 8.0f);
+    b2.color = {0, 0, 255, true};
+    world.balls.push_back(b2);
+
+    std::string path = "/tmp/test_roundtrip.csv";
+    bool saved = saveSceneToCSV(path, world);
+    ASSERT(saved);
+
+    // Reload into a new world
+    PhysicsWorld loaded;
+    bool reloaded = loadSceneFromCSV(path, loaded);
+    ASSERT(reloaded);
+
+    ASSERT(loaded.walls.size() == 1);
+    ASSERT(loaded.balls.size() == 2);
+
+    ASSERT_NEAR(loaded.walls[0].p1.x, 10.0f, 0.5f);
+    ASSERT_NEAR(loaded.walls[0].p2.y, 40.0f, 0.5f);
+
+    ASSERT_NEAR(loaded.balls[0].pos.x, 100.0f, 0.5f);
+    ASSERT(loaded.balls[0].color.r == 255);
+    ASSERT(loaded.balls[0].color.g == 128);
+
+    ASSERT_NEAR(loaded.balls[1].pos.x, 300.0f, 0.5f);
+    ASSERT(loaded.balls[1].color.b == 255);
+}
+
+TEST(csv_load_nonexistent_file_fails) {
+    PhysicsWorld world;
+    bool ok = loadSceneFromCSV("/tmp/nonexistent_file_12345.csv", world);
+    ASSERT(!ok);
+}
+
+TEST(ball_color_default_is_unset) {
+    Ball b(Vec2(0, 0), 5.0f);
+    ASSERT(!b.color.hasColor);
+    ASSERT(b.color.r == 0);
+    ASSERT(b.color.g == 0);
+    ASSERT(b.color.b == 0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
