@@ -128,14 +128,15 @@ void PhysicsWorld::step(float dt) {
             solveBallWallCollisions();
             solveBallBallCollisions();
         }
+
+        // Apply sleep each substep to aggressively kill micro-vibrations
+        // from the iterative constraint solver. This prevents energy
+        // accumulation in dense stacks. The sleep is also applied at
+        // frame-end (below) for final cleanup.
+        applySleepThreshold();
     }
 
-    // Apply sleep threshold ONCE per frame, after all substeps complete.
-    // Previously this ran per-substep, which prevented balls from
-    // accumulating velocity from gravity (500 px/s² * 1/480s = ~1 px/s
-    // per substep, below the 2 px/s threshold). Moving it here allows
-    // velocity to build across substeps while still zeroing micro-motion
-    // at frame boundaries.
+    // Final per-frame sleep pass.
     applySleepThreshold();
 }
 

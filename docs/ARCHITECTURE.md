@@ -35,7 +35,7 @@ simulate-u1446703/
 - **Correct ball-ball restitution response**: The pair solver computes relative velocity using the standard normal direction (A→B) so approaching balls receive the intended restitution impulse.
 - **Endpoint-aware wall contacts**: Exact wall-endpoint overlaps distinguish point contacts from segment interiors, allowing correct reflection at corners.
 - **Spatial hash grid with generation counter**: Ball-ball collision uses `SpatialGrid` that buckets balls into uniform cells. Only pairs sharing a cell are tested, reducing average cost from O(n²) to ~O(n). Cell size is auto-tuned to 2× the max ball radius. The grid uses a generation counter for O(1) `clear()` — cells with stale generation are treated as empty on access. Duplicate pairs from overlapping cells are handled by idempotency.
-- **Sleep threshold**: Balls below a velocity threshold are zeroed out to help convergence.
+- **Sleep threshold (per-substep)**: After each substep, balls with speed below `sleepSpeed` px/s are zeroed out. Applied every substep to aggressively kill constraint-solver residual vibrations in dense stacks. This prevents energy accumulation that would otherwise maintain high velocities in tightly-packed configurations. The visual simulator gives balls random initial velocities (30 px/s), so balls start moving despite the threshold; pure-gravity startup (zero initial velocity) is limited to kicks from overlap resolution.
 - **Settling invariant coverage**: Tests verify that restitution affects decay time but not the final packed footprint — at 50, 120, 500, and 1000 ball scales.
 - **Full-scale 1000-ball tests**: No-overlap and settling-invariance tests at the actual production ball count (1000 balls with shelves).
 

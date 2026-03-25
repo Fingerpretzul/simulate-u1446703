@@ -1,5 +1,14 @@
 # Tasks
 
+## Completed — Iteration 10 (2026-03-25)
+
+- [x] Diagnose 5 failing physics settling tests (38/43 passing at start of iteration)
+- [x] Root cause: iteration 9 moved `applySleepThreshold()` from per-substep to per-frame, allowing energy accumulation in dense packings via constraint solver residuals
+- [x] Fix: restore `applySleepThreshold()` to run inside the substep loop (per-substep), while also keeping it at frame-end
+- [x] Verify all 43/43 tests pass after fix
+- [x] Verify headless simulation works (KE decreases from ~850M peak to ~37M after 200 frames)
+- [x] Update documentation (ARCHITECTURE.md, TASKS.md, AGENT-PROGRESS.md)
+
 ## Completed — Iteration 9 (2026-03-23)
 
 - [x] Add `BallColor` struct and `color` field to `Ball` for persistent ball coloring
