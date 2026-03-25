@@ -84,9 +84,30 @@ struct PhysicsConfig {
     float gravity       = 500.0f;   // Downward acceleration (px/s^2)
     float restitution   = 0.3f;     // Coefficient of restitution [0..1]
     float friction      = 0.1f;     // Tangential friction coefficient
-    float damping       = 0.999f;   // Per-frame velocity damping
+    float damping       = 0.998f;   // Per-substep velocity damping (multiplicative)
     int   substeps      = 8;        // Physics substeps per frame
-    float sleepSpeed    = 2.0f;     // Velocity threshold to zero-out balls
+    int   solverIterations = 8;     // Constraint solver iterations per substep
+    float sleepSpeed    = 5.0f;     // Velocity threshold to zero-out balls
+
+    // ── Settling stabilization parameters ────────────────────────────
+    // These reduce energy injection from position corrections in dense stacks.
+
+    // Baumgarte factor: fraction of penetration corrected per solver pass.
+    // 1.0 = full correction (most stable for resting stacks).
+    // Lower values converge more softly but leave residual overlap.
+    float positionCorrectionFactor = 1.0f;
+
+    // Slop: minimum penetration before position correction kicks in.
+    // Small overlaps (< slop) are tolerated to avoid constant micro-corrections
+    // that inject energy. Visually unnoticeable at 0.5px.
+    float positionSlop = 0.5f;
+
+    // Restitution velocity threshold: approach speeds below this value
+    // are treated as resting contacts (restitution=0). This prevents
+    // micro-bounces in dense stacks from injecting energy. Typical
+    // gravity-induced approach in a substep is ~1-2 px/s, so a threshold
+    // of ~20 px/s catches resting contacts while preserving real bounces.
+    float bounceThreshold = 30.0f;
 };
 
 // ── Spatial hash grid ───────────────────────────────────────────────
@@ -208,4 +229,8 @@ private:
 
     // Zero out velocity of nearly-stopped balls to help settling.
     void applySleepThreshold();
+
+    // Apply additional velocity damping after the constraint solver to
+    // absorb energy injected by position corrections in dense stacks.
+    void applyPostSolverDamping();
 };

@@ -111,9 +111,11 @@ static int runHeadless(float restitution, int totalFrames, const char* prefix,
     world.config.restitution = restitution;
     world.config.gravity     = 500.0f;
     world.config.substeps    = 8;
-    world.config.damping     = 0.999f;
+    world.config.solverIterations = 8;
+    world.config.damping     = 0.998f;
     world.config.friction    = 0.1f;
-    world.config.sleepSpeed  = 2.0f;
+    world.config.sleepSpeed  = 5.0f;
+    world.config.bounceThreshold = 30.0f;
 
     if (loadCSV) {
         if (!loadSceneFromCSV(loadCSV, world)) {
@@ -237,9 +239,11 @@ int main(int argc, char* argv[]) {
     world.config.restitution = restitution;
     world.config.gravity     = 500.0f;
     world.config.substeps    = 8;
-    world.config.damping     = 0.999f;
+    world.config.solverIterations = 8;
+    world.config.damping     = 0.998f;
     world.config.friction    = 0.1f;
-    world.config.sleepSpeed  = 2.0f;
+    world.config.sleepSpeed  = 5.0f;
+    world.config.bounceThreshold = 30.0f;
 
     if (loadCSV) {
         if (!loadSceneFromCSV(loadCSV, world)) {

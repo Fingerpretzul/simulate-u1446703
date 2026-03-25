@@ -123,11 +123,17 @@ void PhysicsWorld::step(float dt) {
 
         // Multiple constraint-solving iterations per substep for stability.
         // More iterations = more accurate stacking, but more CPU cost.
-        constexpr int solverIterations = 4;
-        for (int iter = 0; iter < solverIterations; ++iter) {
+        // 8 iterations handles stacks ~8 balls deep per substep, which
+        // combined with 8 substeps covers ~64 layers of pile depth.
+        for (int iter = 0; iter < config.solverIterations; ++iter) {
             solveBallWallCollisions();
             solveBallBallCollisions();
         }
+
+        // Post-solver damping: absorb energy injected by position corrections.
+        // Applied after the solver so it directly targets the velocity
+        // artifacts from constraint resolution in dense stacks.
+        applyPostSolverDamping();
 
         // Apply sleep each substep to aggressively kill micro-vibrations
         // from the iterative constraint solver. This prevents energy
@@ -250,20 +256,26 @@ void PhysicsWorld::solveBallWallCollisions() {
                     normal = diff.normalized();
                 }
 
-                // Push ball out so it just touches the wall
+                // Push ball out so it just touches the wall.
+                // Full correction for walls — they're immovable boundaries.
                 float penetration = ball.radius - dist;
                 ball.pos += normal * penetration;
 
-                // Reflect velocity along normal with restitution
+                // Reflect velocity along normal with restitution.
+                // Use restitution=0 for slow contacts (resting under gravity)
+                // to prevent micro-bounces from injecting energy in stacks.
                 float velAlongNormal = ball.vel.dot(normal);
                 if (velAlongNormal < 0.0f) {
-                    // Decompose velocity into normal and tangent components
+                    float effectiveRestitution = config.restitution;
+                    if (std::abs(velAlongNormal) < config.bounceThreshold) {
+                        effectiveRestitution = 0.0f;
+                    }
+
                     Vec2 velNormal = normal * velAlongNormal;
                     Vec2 velTangent = ball.vel - velNormal;
 
-                    // Apply restitution to normal component, friction to tangent
                     ball.vel = velTangent * (1.0f - config.friction)
-                             - velNormal * config.restitution;
+                             - velNormal * effectiveRestitution;
                 }
             }
         }
@@ -333,14 +345,21 @@ void PhysicsWorld::solveBallBallCollisions() {
         }
 
         // ── Position correction: push apart ──────────────────────
+        // Use Baumgarte-style partial correction with slop to reduce
+        // energy injection from cascading corrections in dense stacks.
+        // Only penetration exceeding positionSlop is corrected, and
+        // only a fraction (positionCorrectionFactor) per solver pass.
         float penetration = minDist - dist;
+        float correctable = std::max(0.0f, penetration - config.positionSlop);
+        float correction = correctable * config.positionCorrectionFactor;
+
         const float invMassA = 1.0f / a.mass;
         const float invMassB = 1.0f / b.mass;
         const float totalInvMass = invMassA + invMassB;
 
         // Each ball moves proportional to its inverse mass
-        a.pos -= normal * (penetration * invMassA / totalInvMass);
-        b.pos += normal * (penetration * invMassB / totalInvMass);
+        a.pos -= normal * (correction * invMassA / totalInvMass);
+        b.pos += normal * (correction * invMassB / totalInvMass);
 
         // ── Velocity impulse ─────────────────────────────────────
         // Use the standard relative velocity of B with respect to A.
@@ -352,8 +371,15 @@ void PhysicsWorld::solveBallBallCollisions() {
         // Only resolve if balls are approaching each other
         if (velAlongNormal > 0.0f) return;
 
+        // Use restitution=0 for slow contacts (resting in a stack) to
+        // prevent micro-bounces from accumulating energy in dense packing.
+        float effectiveRestitution = config.restitution;
+        if (std::abs(velAlongNormal) < config.bounceThreshold) {
+            effectiveRestitution = 0.0f;
+        }
+
         // Impulse magnitude with restitution
-        float impulseMag = -(1.0f + config.restitution) * velAlongNormal / totalInvMass;
+        float impulseMag = -(1.0f + effectiveRestitution) * velAlongNormal / totalInvMass;
 
         Vec2 impulse = normal * impulseMag;
         a.vel -= impulse * invMassA;
@@ -374,6 +400,20 @@ void PhysicsWorld::solveBallBallCollisions() {
             b.vel += fricVec * invMassB;
         }
     }); // end forEachPair lambda
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// applyPostSolverDamping — absorb energy injected by position corrections.
+// The constraint solver moves overlapping balls apart, which implicitly
+// creates velocity (the ball is at a new position). In dense stacks,
+// these corrections cascade and inject net kinetic energy. This damping
+// pass runs AFTER the solver to directly target that injected energy,
+// helping tall piles converge to rest.
+// ═══════════════════════════════════════════════════════════════════════
+void PhysicsWorld::applyPostSolverDamping() {
+    for (auto& b : balls) {
+        b.vel = b.vel * config.damping;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
