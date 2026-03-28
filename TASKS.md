@@ -1,5 +1,29 @@
 # Tasks
 
+## Completed — Iteration 12 (2026-03-28)
+
+- [x] Diagnose residual KE plateauing at non-zero values (860K at r=0.0, 995K at r=0.3)
+  - Root cause 1: shelf-sliding equilibrium — gravity's slope component balances damping/friction at ~30 px/s
+  - Root cause 2: terminal velocity trapping — balls at ~250 px/s against pile, zero net displacement
+- [x] Implement contact-aware settling system with two mechanisms:
+  - Contact sleep (`contactSleepSpeed=40`): balls in resting contact below threshold zeroed (static friction)
+  - Stuck detection (`stuckThreshold=0.1`): per-frame position comparison catches zero-displacement balls
+  - Added `inRestingContact`, `prevPos` fields to Ball; `contactSleepSpeed`, `stuckThreshold` to PhysicsConfig
+  - Both disabled when `sleepSpeed=0` (for unit tests with precise velocity tracking)
+- [x] KE now reaches exactly 0 at all restitution values: r=0.0 by frame 300, r=0.3 by frame 300, r=0.9 by frame 360
+- [x] Add ball outlines (0.8px dark border) for visual separation in dense packs
+- [x] Add 5 new tests (46→51):
+  - `contact_sleep_stops_shelf_sliding`: shelf-sliding balls settle to KE=0
+  - `stuck_detection_catches_terminal_velocity_ball`: fast ball against pile zeroed
+  - `full_scale_settles_to_zero_ke`: 500 balls reach KE=0 at r=0.0/0.3/0.9
+  - `scene_gen_grid_produces_valid_csv`: scene_gen → CSV → loadScene roundtrip
+  - `scene_gen_funnel_layout`: funnel layout with extra walls validated
+- [x] Adjust settling-invariance test tolerances (15→25-30px) and frames for contact-aware dynamics
+- [x] Verify all 51/51 tests pass
+- [x] Run headless simulations at r=0.0, 0.3, 0.9 — all reach KE=0
+- [x] End-to-end pipeline verified: scene_gen → simulator → CSV save
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, TASKS.md, AGENT-PROGRESS.md)
+
 ## Completed — Iteration 11 (2026-03-28)
 
 - [x] Implement two-phase sleep system to fix gravity-vs-sleep issue
@@ -126,9 +150,11 @@
 - [x] ~~**CSV scene I/O**~~ — Load/save balls+walls from CSV; supports colors, comments, headers (iteration 9)
 - [x] ~~**Color assignment tool**~~ — `color_assign` maps final ball positions to BMP image colors (iteration 9)
 - [x] ~~**Gravity-vs-sleep fix**~~ — Two-phase sleep system: counter-based delay for rest-start balls, instant sleep for active balls (iteration 11)
-- [ ] **Visual polish**: Ball outlines, restitution slider UI, color scheme options
+- [x] ~~**High-restitution residual bouncing**~~ — Contact-aware settling: contact sleep + stuck detection ensures KE=0 at all restitution values (iteration 12)
+- [x] ~~**Visual polish: Ball outlines**~~ — Dark 0.8px outline around each ball for visual separation (iteration 12)
+- [x] ~~**CSV scene generator**~~ — `scene_gen` tool with grid/rain/funnel/pile layouts (iteration 10/12; tests added in 12)
+- [ ] **Visual polish**: Restitution slider UI, color scheme options
 - [ ] **SIMD vectorization**: Consider SIMD for the physics step inner loops
 - [ ] **Interactive display**: Need an environment with a real display server (X11/Wayland) for interactive mode
-- [ ] **CSV scene generator**: Tool to procedurally generate initial scene CSVs with various layouts
 - [ ] **PNG image support**: `color_assign` currently requires BMP; could add PNG via SDL_image
-- [ ] **High-restitution residual bouncing**: With restitution ≥0.9, some balls can maintain stable orbits (gravity input = bounce loss). Consider adaptive damping or geometric orbit detection.
+- [ ] **CI workflow**: Automated testing pipeline

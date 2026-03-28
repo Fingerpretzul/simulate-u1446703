@@ -36,16 +36,21 @@ simulate-u1446703/
 - **Endpoint-aware wall contacts**: Exact wall-endpoint overlaps distinguish point contacts from segment interiors, allowing correct reflection at corners.
 - **Spatial hash grid with generation counter**: Ball-ball collision uses `SpatialGrid` that buckets balls into uniform cells. Only pairs sharing a cell are tested, reducing average cost from O(n²) to ~O(n). Cell size is auto-tuned to 2× the max ball radius. The grid uses a generation counter for O(1) `clear()` — cells with stale generation are treated as empty on access. Duplicate pairs from overlapping cells are handled by idempotency.
 - **Two-phase sleep system**: The sleep threshold uses a two-phase approach:
-  - **Phase 1 (never-active balls)**: Balls that have never exceeded the speed threshold get a counter-based delay (`sleepDelay` substeps) before sleep triggers. This gives gravity time to build velocity above the threshold so zero-velocity balls can actually fall. Prior to iteration 11, gravity (adding ~1 px/s per substep) was always below the sleep threshold (~5 px/s) and instantly zeroed, making gravity-only wakeup impossible.
+  - **Phase 1 (never-active balls)**: Balls that have never exceeded the speed threshold get a counter-based delay (`sleepDelay` substeps) before sleep triggers. This gives gravity time to build velocity above the threshold so zero-velocity balls can actually fall.
   - **Phase 2 (previously-active balls)**: Once a ball has exceeded the threshold, `hasBeenActive` is set permanently. Future dips below the threshold trigger instant sleep. This aggressively kills constraint-solver micro-vibrations and prevents perpetual bouncing oscillations in dense stacks.
   - The `hasBeenActive` flag is stored on each `Ball` struct and persists across frames.
-- **Settling invariant coverage**: Tests verify that restitution affects decay time but not the final packed footprint — at 50, 120, 500, and 1000 ball scales.
-- **Full-scale 1000-ball tests**: No-overlap and settling-invariance tests at the actual production ball count (1000 balls with shelves).
+- **Contact-aware settling** (iteration 12): Two mechanisms ensure balls fully settle (KE reaches exactly 0):
+  - **Contact sleep** (`contactSleepSpeed`): Balls in contact and moving below 40 px/s are zeroed. This simulates static friction and catches shelf-sliding equilibria where gravity's slope component balances damping/friction at a steady-state speed above the normal sleep threshold.
+  - **Stuck detection** (`stuckThreshold`): Per-frame position comparison detects balls with high velocity but zero net displacement. These are trapped at terminal velocity (~250 px/s) against a surface — gravity pushes them in, collision correction pushes them back. Zeroed when displacement < 0.1 px and speed > 100 px/s. Previously, such balls would vibrate at 250 px/s indefinitely.
+  - Both mechanisms are disabled when `sleepSpeed=0` (for unit tests that need precise velocity tracking).
+- **Settling invariant coverage**: Tests verify that restitution affects decay time but not the final packed footprint — at 50, 120, 500, and 1000 ball scales. KE reaches exactly 0 at all restitution values (0.0, 0.3, 0.9).
+- **Full-scale 1000-ball tests**: No-overlap, settling-invariance, and KE=0 tests at the actual production ball count.
 
 ### Renderer (renderer.h / renderer.cpp)
 
 - Circles drawn as triangle fans via `SDL_RenderGeometry` (16 segments each).
 - Precomputed trig tables and static vertex buffer eliminate per-ball heap allocation.
+- **Ball outlines**: Each ball is drawn with a dark outline (0.8px border) for visual separation in dense packs.
 - Balls colored by speed: blue (slow) → green (medium) → red (fast).
 - Walls drawn as white lines.
 - FPS + ball count HUD overlay via `SDL_RenderDebugText` (scaled 2×).
@@ -114,8 +119,10 @@ simulate-u1446703/
 
 | Metric | Value |
 |--------|-------|
-| 1000-ball physics step | ~0.8–0.9 ms/frame |
+| 1000-ball physics step | ~1.8–1.9 ms/frame |
 | Target frametime (30 FPS) | 33 ms |
-| Headroom | ~30× |
+| Headroom | ~17× |
 | Spatial grid clear | O(1) via generation counter |
 | Ball-ball broadphase | O(n) average via spatial hash |
+| KE convergence (r=0.0) | 0 by frame ~300 |
+| KE convergence (r=0.9) | 0 by frame ~360 |

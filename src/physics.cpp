@@ -117,7 +117,19 @@ void PhysicsWorld::step(float dt) {
 
     float subDt = dt / static_cast<float>(config.substeps);
 
+    // Save pre-frame positions for per-frame stuck detection.
+    // Stuck balls have high velocity but zero net displacement over
+    // a full frame because collision corrections cancel their movement.
+    for (auto& b : balls) {
+        b.prevPos = b.pos;
+    }
+
     for (int s = 0; s < config.substeps; ++s) {
+        // Clear resting-contact flags at the start of each substep.
+        for (auto& b : balls) {
+            b.inRestingContact = false;
+        }
+
         integrateVelocities(subDt);
         integratePositions(subDt);
 
@@ -135,11 +147,39 @@ void PhysicsWorld::step(float dt) {
         // artifacts from constraint resolution in dense stacks.
         applyPostSolverDamping();
 
+        // Contact-aware sleep: zero velocity of balls in resting contact
+        // that are sliding slowly (below contactSleepSpeed), and detect
+        // balls stuck at terminal velocity (high speed but zero displacement).
+        applyContactDamping();
+
         // Apply sleep each substep to aggressively kill micro-vibrations
         // from the iterative constraint solver. This prevents energy
         // accumulation in dense stacks. The sleep is also applied at
         // frame-end (below) for final cleanup.
         applySleepThreshold();
+    }
+
+    // Per-frame stuck detection: if a ball has high velocity but hasn't
+    // moved since the start of the frame, it's trapped against a surface.
+    // Zero its velocity. This catches balls at terminal velocity (~250
+    // px/s) where gravity pushes them into the pile and collision
+    // correction pushes them back every substep, yielding zero net
+    // displacement. Only check balls moving fast enough that their
+    // expected displacement (speed × dt) should be >> stuckThreshold.
+    // A speed threshold of 100 px/s × 0.016s = 1.6 px expected
+    // displacement, well above the 0.1 px stuckThreshold.
+    if (config.sleepSpeed > 0.0f) {
+        float stuckThresholdSq = config.stuckThreshold * config.stuckThreshold;
+        constexpr float STUCK_SPEED_MIN = 100.0f; // Only check fast balls
+        float stuckSpeedMinSq = STUCK_SPEED_MIN * STUCK_SPEED_MIN;
+        for (auto& b : balls) {
+            if (!b.hasBeenActive) continue;
+            if (b.vel.lengthSq() < stuckSpeedMinSq) continue;
+            Vec2 displacement = b.pos - b.prevPos;
+            if (displacement.lengthSq() < stuckThresholdSq) {
+                b.vel = {0.0f, 0.0f};
+            }
+        }
     }
 
     // Final per-frame sleep pass.
@@ -235,6 +275,10 @@ void PhysicsWorld::solveBallWallCollisions() {
 
             // Check for overlap
             if (dist < ball.radius) {
+                // Any overlap means the ball is in contact — mark for
+                // contact-aware sleep regardless of approach speed.
+                ball.inRestingContact = true;
+
                 Vec2 normal;
                 if (dist < 1e-6f) {
                     const bool atEndpoint = (t <= 1e-4f) || (t >= 1.0f - 1e-4f);
@@ -368,6 +412,13 @@ void PhysicsWorld::solveBallBallCollisions() {
         Vec2 relVel = b.vel - a.vel;
         float velAlongNormal = relVel.dot(normal);
 
+        // Any overlap means these balls are in contact — mark for
+        // contact-aware sleep. This catches all cases: slow resting
+        // contacts, fast impacts that zero velocity (r=0), and
+        // position corrections for separating pairs.
+        a.inRestingContact = true;
+        b.inRestingContact = true;
+
         // Only resolve if balls are approaching each other
         if (velAlongNormal > 0.0f) return;
 
@@ -413,6 +464,25 @@ void PhysicsWorld::solveBallBallCollisions() {
 void PhysicsWorld::applyPostSolverDamping() {
     for (auto& b : balls) {
         b.vel = b.vel * config.damping;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// applyContactDamping — contact-aware sleep (static friction).
+// Balls in resting contact moving below contactSleepSpeed are zeroed.
+// This catches shelf-sliding equilibria where gravity's slope component
+// balances damping/friction at a steady 5-40 px/s. Only applies to
+// Phase 2 balls (hasBeenActive=true). Disabled when sleepSpeed=0.
+// ═══════════════════════════════════════════════════════════════════════
+void PhysicsWorld::applyContactDamping() {
+    if (config.sleepSpeed <= 0.0f || config.contactSleepSpeed <= 0.0f) return;
+
+    float contactThresholdSq = config.contactSleepSpeed * config.contactSleepSpeed;
+    for (auto& b : balls) {
+        if (!b.inRestingContact || !b.hasBeenActive) continue;
+        if (b.vel.lengthSq() < contactThresholdSq) {
+            b.vel = {0.0f, 0.0f};
+        }
     }
 }
 

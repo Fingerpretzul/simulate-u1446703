@@ -36,13 +36,15 @@ cmake --build build
 ./build/tests
 ```
 
-Expected: **46/46 tests pass**. Includes:
+Expected: **51/51 tests pass**. Includes:
 - Vec2 math (6), gravity (2), ball-wall (5), ball-ball (4)
 - Restitution behavior (4), energy/settling (3), wall normals (2)
 - Collision edge cases (3), CCD (2), performance benchmark (1)
 - Large-scale 500-ball (2), full-scale 1000-ball (2)
 - CSV I/O (6), ball color (2)
 - Sleep system (3): gravity-from-rest wakeup, counter reset, zero-velocity settling
+- Contact-aware settling (3): shelf-sliding sleep, stuck detection, full-scale KE=0
+- Scene generator (2): grid CSV validation, funnel layout validation
 
 ## Run Simulator
 
@@ -72,6 +74,22 @@ Expected: **46/46 tests pass**. Includes:
 ./build/simulator --headless --load-csv input.csv --save-csv output.csv 0.3 600
 ```
 
+### Scene generator tool
+```bash
+./build/scene_gen <output.csv> [options]
+
+Options:
+  --balls N         Number of balls (default: 1000)
+  --radius-min R    Minimum ball radius (default: 3.0)
+  --radius-max R    Maximum ball radius (default: 6.0)
+  --layout TYPE     Layout: grid, rain, funnel, pile (default: grid)
+  --width W         Container width (default: 1100)
+  --height H        Container height (default: 700)
+  --margin M        Wall margin (default: 50)
+  --shelves N       Number of angled shelves (default: 2)
+  --seed S          Random seed (default: time-based)
+```
+
 ### Color assignment tool
 ```bash
 ./build/color_assign <input.csv> <image.bmp> <output.csv> [restitution] [frames]
@@ -96,15 +114,16 @@ mkdir -p screenshots
 # Produces: sim_r03_initial.bmp, sim_r03_bouncing.bmp,
 #           sim_r03_settling.bmp, sim_r03_settled.bmp
 
-# CSV workflow: generate scene → simulate → color from image
-./build/simulator --headless --save-csv initial.csv 0.3 600 screenshots/sim
-./build/color_assign initial.csv screenshots/sim_settled.bmp colored.csv 0.3 600
+# Scene generator → simulate → color from image pipeline
+./build/scene_gen scene.csv --balls 500 --layout rain --seed 42
+./build/simulator --headless --load-csv scene.csv --save-csv settled.csv 0.3 600 screenshots/sim
+./build/color_assign scene.csv screenshots/sim_settled.bmp colored.csv 0.3 600
 ./build/simulator --headless --load-csv colored.csv 0.3 10 screenshots/colored
 ```
 
 ## Performance
 
-- 1000-ball physics step: ~0.8–0.9 ms/frame
-- 30 FPS budget: 33 ms → ~30× headroom for physics alone
+- 1000-ball physics step: ~1.8–1.9 ms/frame (includes contact-aware settling)
+- 30 FPS budget: 33 ms → ~17× headroom for physics alone
 - Spatial hash grid: O(n) broadphase with O(1) clear via generation counter
 - CCD: negligible overhead (one dot product per ball-wall pair per substep)

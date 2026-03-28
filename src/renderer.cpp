@@ -93,7 +93,15 @@ void Renderer::draw(const PhysicsWorld& world) {
         SDL_RenderGeometry(renderer_, nullptr, wallVerts, 4, wallIndices, 6);
     }
 
-    // Draw balls — use persistent color if set, else speed-based coloring
+    // Draw balls — outline then fill for visual separation in packs.
+    // The outline is a slightly larger dark circle drawn behind the fill.
+    constexpr float OUTLINE_WIDTH = 0.8f; // px beyond ball radius
+    for (const auto& ball : world.balls) {
+        // Draw dark outline circle (slightly larger than the ball)
+        drawFilledCircle(ball.pos.x, ball.pos.y,
+                         ball.radius + OUTLINE_WIDTH, 10, 10, 15);
+    }
+
     for (const auto& ball : world.balls) {
         uint8_t r, g, b;
         if (ball.color.hasColor) {
