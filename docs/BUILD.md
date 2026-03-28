@@ -36,12 +36,13 @@ cmake --build build
 ./build/tests
 ```
 
-Expected: **43/43 tests pass**. Includes:
+Expected: **46/46 tests pass**. Includes:
 - Vec2 math (6), gravity (2), ball-wall (5), ball-ball (4)
 - Restitution behavior (4), energy/settling (3), wall normals (2)
 - Collision edge cases (3), CCD (2), performance benchmark (1)
 - Large-scale 500-ball (2), full-scale 1000-ball (2)
 - CSV I/O (6), ball color (2)
+- Sleep system (3): gravity-from-rest wakeup, counter reset, zero-velocity settling
 
 ## Run Simulator
 

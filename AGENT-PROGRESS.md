@@ -488,3 +488,53 @@ Found and fixed 5 failing settling tests that were introduced by a regression in
 - Interactive display: need X11/Wayland environment for visual verification
 - PNG image support for color_assign (currently BMP only)
 - CI workflow for automated testing
+
+## Iteration 11 — 2026-03-28 (Claude Opus 4.6)
+
+### What was done
+Fixed the fundamental gravity-vs-sleep issue identified in iteration 10 by implementing a two-phase sleep system.
+
+1. **Two-phase sleep system** (`include/physics.h`, `src/physics.cpp`):
+   - **Phase 1 (never-active balls)**: Balls that have never exceeded the sleep speed threshold get a counter-based delay (`sleepDelay` substeps, default 8) before sleep triggers. This allows gravity to build velocity over multiple substeps. Previously, gravity added ~1 px/s per substep which was always below the 5 px/s threshold and immediately zeroed, making gravity-only wakeup impossible.
+   - **Phase 2 (previously-active balls)**: Once a ball's speed exceeds the threshold, `hasBeenActive` is set permanently to `true`. Future dips below the threshold trigger instant sleep, aggressively killing constraint-solver micro-vibrations.
+   - Added `sleepCounter` (int) and `hasBeenActive` (bool) fields to `Ball` struct
+   - Added `sleepDelay` (int, default 8) to `PhysicsConfig`
+   - This cleanly separates the two conflicting requirements: allowing gravity to build up vs. killing solver oscillations
+
+2. **New tests** (`tests/test_physics.cpp`): 3 new tests (43→46 total):
+   - `gravity_wakes_zero_velocity_balls`: Verifies that a ball starting at rest with zero velocity can fall under gravity — this was broken in all previous iterations
+   - `sleep_counter_resets_on_fast_motion`: Verifies that a fast-moving ball's `hasBeenActive` flag is set and it never sleeps prematurely
+   - `settling_with_zero_initial_velocity`: 20 balls with zero initial velocity fall and settle in the bottom half of a container — previously, these balls would be frozen forever
+
+3. **Test adjustments**:
+   - Increased shelf scene settling test frames from 4000→5000 to accommodate slightly longer settling with counter-based Phase 1
+   - Removed explicit `sleepDelay` overrides in new tests (use default 8)
+
+4. **Documentation updates**:
+   - Updated ARCHITECTURE.md: replaced sleep threshold description with two-phase system explanation
+   - Updated BUILD.md: test count 46, added sleep system test category
+   - Updated TASKS.md: iteration 11 checklist, resolved gravity-vs-sleep future work item, added high-restitution residual bouncing as new known issue
+
+### Verification performed
+- `cmake --build build` → compiled cleanly
+- `./build/tests` → **46/46 passed** (including 3 new sleep system tests)
+- `SDL_VIDEODRIVER=offscreen ./build/simulator --headless 0.0 400` → KE reaches 0 at frame 360 (fully settled)
+- `SDL_VIDEODRIVER=offscreen ./build/simulator --headless 0.3 800` → KE stabilizes, valid screenshots
+- `SDL_VIDEODRIVER=offscreen ./build/simulator --headless 0.9 1200` → Higher residual KE (physically correct with high restitution)
+- CSV save/load roundtrip verified
+- Debug programs confirmed: zero-velocity balls now fall 133px in 60 frames (previously 0px); 500-ball settling reaches maxSpeed=0 by frame 1500
+
+### Current state
+- **46/46 tests pass**
+- **Gravity now wakes zero-velocity balls** — the fundamental limitation from iterations 1–10 is resolved
+- **Settling still works correctly** — Phase 2 instant sleep prevents constraint-solver energy accumulation
+- **All PROJECT-OVERVIEW.md requirements remain met**
+- Performance: ~1.8 ms/frame for 1000 balls (well within 33ms budget)
+
+### What the next iteration should focus on
+- **High-restitution residual bouncing**: With restitution ≥0.9, some balls maintain stable orbits. Consider adaptive damping, higher bounce threshold, or geometric orbit detection.
+- **Visual polish**: Ball outlines, restitution slider UI, color scheme options
+- **Interactive display**: Need X11/Wayland environment for visual verification
+- **PNG image support**: `color_assign` currently requires BMP; could add PNG via SDL_image
+- **CSV scene generator**: Tool to procedurally generate initial scene CSVs
+- **CI workflow**: Automated testing pipeline

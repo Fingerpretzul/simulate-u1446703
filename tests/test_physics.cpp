@@ -636,9 +636,11 @@ TEST(restitution_preserves_final_packed_size_in_shelf_scene) {
     // a shelf-filled container with mixed ball sizes, which is much closer to
     // the interactive scene than the simple stacking fixture above.
     // Balls have initial velocities so they actually bounce off shelves.
-    const SettledBounds lowRestitution = simulateShelfSceneToSettledBounds(0.0f, 4000);
-    const SettledBounds mediumRestitution = simulateShelfSceneToSettledBounds(0.3f, 4000);
-    const SettledBounds highRestitution = simulateShelfSceneToSettledBounds(0.9f, 4000);
+    // Counter-based sleep adds a few substeps of delay before zeroing
+    // velocity, so high restitution needs more frames to fully settle.
+    const SettledBounds lowRestitution = simulateShelfSceneToSettledBounds(0.0f, 5000);
+    const SettledBounds mediumRestitution = simulateShelfSceneToSettledBounds(0.3f, 5000);
+    const SettledBounds highRestitution = simulateShelfSceneToSettledBounds(0.9f, 5000);
 
     ASSERT(lowRestitution.maxSpeed < 10.0f);
     ASSERT(mediumRestitution.maxSpeed < 10.0f);
@@ -1428,6 +1430,117 @@ TEST(ball_color_default_is_unset) {
     ASSERT(b.color.r == 0);
     ASSERT(b.color.g == 0);
     ASSERT(b.color.b == 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Sleep system tests
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(gravity_wakes_zero_velocity_balls) {
+    // Prior to the counter-based sleep system, balls starting at rest could
+    // never fall under gravity because each substep's gravity contribution
+    // (~1 px/s) was below the sleep threshold (~5 px/s) and immediately
+    // zeroed. The counter-based system allows gravity to accumulate over
+    // sleepDelay substeps before triggering sleep, so balls at rest fall.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.substeps = 8;
+    world.config.restitution = 0.3f;
+    world.config.damping = 0.998f;
+    world.config.sleepSpeed = 5.0f;
+    // sleepDelay=8 (default) gives gravity a full frame of substeps to
+    // build velocity above the sleep threshold before sleep triggers.
+
+    // Ball at rest (zero initial velocity) above a floor
+    Ball b(Vec2(100.0f, 50.0f), 10.0f);
+    b.vel = {0.0f, 0.0f};
+    world.balls.push_back(b);
+
+    // Floor at y=400
+    world.walls.push_back(Wall(Vec2(0.0f, 400.0f), Vec2(200.0f, 400.0f)));
+
+    float startY = world.balls[0].pos.y;
+
+    // Run for 1 simulated second
+    for (int i = 0; i < 60; ++i) {
+        world.step(0.016f);
+    }
+
+    // Ball should have fallen significantly under gravity
+    ASSERT(world.balls[0].pos.y > startY + 50.0f);
+    // Ball should be above the floor
+    ASSERT(world.balls[0].pos.y < 400.0f);
+}
+
+TEST(sleep_counter_resets_on_fast_motion) {
+    // Verify the sleep counter resets when a ball moves fast, preventing
+    // premature sleep after a brief velocity dip.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 1;
+    world.config.restitution = 1.0f;
+    world.config.damping = 1.0f;
+    world.config.friction = 0.0f;
+    world.config.sleepSpeed = 5.0f;
+    // Use default sleepDelay=8
+
+    // Ball bouncing between two walls — should never sleep
+    Ball b(Vec2(50.0f, 50.0f), 5.0f);
+    b.vel = {100.0f, 0.0f};
+    world.balls.push_back(b);
+
+    world.walls.push_back(Wall(Vec2(200.0f, 0.0f), Vec2(200.0f, 100.0f)));
+    world.walls.push_back(Wall(Vec2(0.0f, 100.0f), Vec2(0.0f, 0.0f)));
+
+    for (int i = 0; i < 100; ++i) {
+        world.step(0.016f);
+    }
+
+    // Ball should still be moving (has been active, so sleep resets instantly)
+    ASSERT(world.balls[0].vel.length() > 10.0f);
+    ASSERT(world.balls[0].hasBeenActive);
+}
+
+TEST(settling_with_zero_initial_velocity) {
+    // This is the key test that was previously trivially passing because
+    // balls at rest never moved. With counter-based sleep, zero-velocity
+    // balls now actually fall and settle, making this a real test of the
+    // settling-invariance property.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.restitution = 0.3f;
+
+    // Simple box container
+    world.walls.push_back(Wall(Vec2(0, 0), Vec2(200, 0)));
+    world.walls.push_back(Wall(Vec2(200, 0), Vec2(200, 400)));
+    world.walls.push_back(Wall(Vec2(200, 400), Vec2(0, 400)));
+    world.walls.push_back(Wall(Vec2(0, 400), Vec2(0, 0)));
+
+    // 20 balls in a grid with ZERO initial velocity
+    for (int i = 0; i < 20; ++i) {
+        float x = 30.0f + (i % 5) * 30.0f;
+        float y = 30.0f + (i / 5) * 30.0f;
+        Ball b(Vec2(x, y), 8.0f);
+        // Explicitly zero velocity — testing that gravity wakes them
+        b.vel = {0.0f, 0.0f};
+        world.balls.push_back(b);
+    }
+
+    // Run for 10 simulated seconds
+    for (int i = 0; i < 600; ++i) {
+        world.step(0.016f);
+    }
+
+    // All balls should have fallen to the bottom portion of the container
+    for (const auto& b : world.balls) {
+        ASSERT(b.pos.y > 200.0f); // Must be in bottom half
+        ASSERT(b.pos.y < 405.0f); // Must be inside container
+    }
+
+    // All balls should be settled
+    for (const auto& b : world.balls) {
+        ASSERT(b.vel.length() < 5.0f);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

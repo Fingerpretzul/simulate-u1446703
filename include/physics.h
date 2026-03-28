@@ -53,6 +53,28 @@ struct Ball {
     float mass;     // Mass (proportional to area by default)
     BallColor color; // Optional persistent color for CSV/rendering
 
+    // Sleep system: two-phase approach.
+    // Phase 1 (never been active): counter-based delay gives gravity
+    //   sleepDelay substeps to build velocity above the threshold.
+    //   sleepCounter counts up from 0; sleep triggers at sleepDelay.
+    // Phase 2 (has been active): instant sleep when speed < threshold.
+    //   This aggressively kills constraint-solver micro-vibrations.
+    // hasBeenActive is set to true the first time speed exceeds the
+    // threshold. Once set, the ball never gets the grace period again.
+    int sleepCounter = 0;
+    bool hasBeenActive = false;
+
+    // Resting contact tracking: set to true each substep when the ball
+    // has a collision overlap resolved. Cleared at the start of each
+    // substep. Used by the contact-aware sleep pass to apply an elevated
+    // sleep threshold to balls sliding slowly on surfaces.
+    bool inRestingContact = false;
+
+    // Previous position: saved at the start of each substep for stuck
+    // detection. If a ball is in contact but its position hasn't changed,
+    // it's trapped at terminal velocity and should be zeroed.
+    Vec2 prevPos;
+
     Ball() : radius(5.0f), mass(1.0f) {}
     Ball(Vec2 pos, float radius)
         : pos(pos), vel({0, 0}), radius(radius),
@@ -88,6 +110,9 @@ struct PhysicsConfig {
     int   substeps      = 8;        // Physics substeps per frame
     int   solverIterations = 8;     // Constraint solver iterations per substep
     float sleepSpeed    = 5.0f;     // Velocity threshold to zero-out balls
+    int   sleepDelay    = 8;        // Consecutive low-speed substeps before sleeping
+                                    // (matches default substeps, giving gravity a full
+                                    //  frame to build velocity before sleep triggers)
 
     // ── Settling stabilization parameters ────────────────────────────
     // These reduce energy injection from position corrections in dense stacks.
@@ -108,6 +133,22 @@ struct PhysicsConfig {
     // gravity-induced approach in a substep is ~1-2 px/s, so a threshold
     // of ~20 px/s catches resting contacts while preserving real bounces.
     float bounceThreshold = 30.0f;
+
+    // Contact sleep speed: elevated sleep threshold for balls in contact.
+    // Balls sliding on angled surfaces reach an equilibrium speed where
+    // gravity input = damping+friction loss. That speed (typically 5-40
+    // px/s) is above the normal sleepSpeed. For balls in contact, we
+    // use this higher threshold to zero them out, simulating static
+    // friction. Only applies to Phase 2 balls (hasBeenActive=true).
+    float contactSleepSpeed = 40.0f;
+
+    // Position-based stuck detection threshold: if a ball is in contact
+    // and its position moved less than this distance during a substep, the
+    // ball is stuck at terminal velocity against a surface (gravity pushes
+    // it in, collision correction pushes it back). Zero its velocity.
+    // This catches the rare case where a ball vibrates at 250 px/s but
+    // its net displacement is zero each substep.
+    float stuckThreshold = 0.1f;
 };
 
 // ── Spatial hash grid ───────────────────────────────────────────────
@@ -233,4 +274,9 @@ private:
     // Apply additional velocity damping after the constraint solver to
     // absorb energy injected by position corrections in dense stacks.
     void applyPostSolverDamping();
+
+    // Apply stronger damping to balls that are in contact with walls or
+    // other balls. This breaks the equilibrium where gravity input equals
+    // damping loss for balls sliding on angled surfaces.
+    void applyContactDamping();
 };

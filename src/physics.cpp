@@ -417,15 +417,45 @@ void PhysicsWorld::applyPostSolverDamping() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// applySleepThreshold — zero out velocity of very slow balls.
-// This prevents endless micro-vibrations and helps the simulation
-// converge to a stable resting state.
+// applySleepThreshold — two-phase sleep system for balls.
+//
+// Phase 1 — Never been active (!hasBeenActive):
+//   Counter-based delay. Each substep with speed < threshold increments
+//   sleepCounter. Sleep triggers at sleepDelay. If speed exceeds the
+//   threshold before the counter fills, hasBeenActive becomes true and
+//   the ball transitions to Phase 2 permanently.
+//   This gives gravity sleepDelay substeps to build velocity so balls
+//   starting from rest can actually fall.
+//
+// Phase 2 — Has been active (hasBeenActive):
+//   Instant sleep the moment speed < threshold. This aggressively kills
+//   micro-vibrations from the constraint solver and prevents perpetual
+//   bouncing oscillations in dense stacks.
+//
+// The distinction prevents the old bug where gravity*subDt < sleepSpeed
+// made rest-start balls permanently frozen, while preserving the
+// aggressive settling behavior needed for stable stacking.
 // ═══════════════════════════════════════════════════════════════════════
 void PhysicsWorld::applySleepThreshold() {
     float threshold = config.sleepSpeed * config.sleepSpeed;
     for (auto& b : balls) {
         if (b.vel.lengthSq() < threshold) {
-            b.vel = {0.0f, 0.0f};
+            if (!b.hasBeenActive) {
+                // Phase 1: counter-based delay for initial gravity buildup
+                b.sleepCounter++;
+                if (b.sleepCounter >= config.sleepDelay) {
+                    b.vel = {0.0f, 0.0f};
+                    // Don't set hasBeenActive — let gravity try again next frame
+                    b.sleepCounter = 0;
+                }
+            } else {
+                // Phase 2: instant sleep for previously-active balls
+                b.vel = {0.0f, 0.0f};
+            }
+        } else {
+            // Ball is moving fast enough — mark as active permanently
+            b.hasBeenActive = true;
+            b.sleepCounter = 0;
         }
     }
 }

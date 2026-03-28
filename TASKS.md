@@ -1,5 +1,18 @@
 # Tasks
 
+## Completed — Iteration 11 (2026-03-28)
+
+- [x] Implement two-phase sleep system to fix gravity-vs-sleep issue
+  - Phase 1 (never-active): counter-based delay gives gravity `sleepDelay` substeps to build velocity
+  - Phase 2 (previously-active): instant sleep kills solver micro-vibrations
+  - Added `sleepCounter` and `hasBeenActive` fields to `Ball` struct
+  - Added `sleepDelay` config parameter (default 8, matching substeps)
+- [x] Add 3 new tests (43→46): gravity_wakes_zero_velocity_balls, sleep_counter_resets_on_fast_motion, settling_with_zero_initial_velocity
+- [x] Increase shelf scene settling test frames (4000→5000) for counter-based sleep convergence
+- [x] Verify all 46/46 tests pass
+- [x] Run headless simulations at restitution 0.0, 0.3, 0.9 — all produce valid results
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, TASKS.md, AGENT-PROGRESS.md)
+
 ## Completed — Iteration 10 (2026-03-25)
 
 - [x] Diagnose 5 failing physics settling tests (38/43 passing at start of iteration)
@@ -112,8 +125,10 @@
 - [x] ~~**Spatial grid clear optimization**~~ — Generation counter replaces per-cell iteration (iteration 8)
 - [x] ~~**CSV scene I/O**~~ — Load/save balls+walls from CSV; supports colors, comments, headers (iteration 9)
 - [x] ~~**Color assignment tool**~~ — `color_assign` maps final ball positions to BMP image colors (iteration 9)
+- [x] ~~**Gravity-vs-sleep fix**~~ — Two-phase sleep system: counter-based delay for rest-start balls, instant sleep for active balls (iteration 11)
 - [ ] **Visual polish**: Ball outlines, restitution slider UI, color scheme options
 - [ ] **SIMD vectorization**: Consider SIMD for the physics step inner loops
 - [ ] **Interactive display**: Need an environment with a real display server (X11/Wayland) for interactive mode
 - [ ] **CSV scene generator**: Tool to procedurally generate initial scene CSVs with various layouts
 - [ ] **PNG image support**: `color_assign` currently requires BMP; could add PNG via SDL_image
+- [ ] **High-restitution residual bouncing**: With restitution ≥0.9, some balls can maintain stable orbits (gravity input = bounce loss). Consider adaptive damping or geometric orbit detection.
