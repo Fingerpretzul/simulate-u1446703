@@ -1,5 +1,12 @@
 # Tasks
 
+## Completed — Iteration 14 (2026-03-29)
+
+- [x] Plan and add a checked-in example CSV scene for manual loading/testing
+- [x] Create `examples/two_groups_center_funnel.csv` with two mirrored ball groups and a wall funnel/chute into the center
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, AGENT-PROGRESS.md, TASKS.md) to describe the bundled example scene
+- [x] Verify the example scene loads through the project CSV loader
+
 ## Completed — Iteration 13 (2026-03-28)
 
 - [x] Fix broken git repository (alternates pointing to wrong path after iteration 12 workaround)
