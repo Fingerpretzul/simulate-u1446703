@@ -20,6 +20,7 @@
 #include "physics.h"
 #include "renderer.h"
 #include "csv_io.h"
+#include "sim_config.h"  // DefaultPhysicsConfig, WINDOW_WIDTH, WINDOW_HEIGHT
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -108,14 +109,14 @@ static int runHeadless(float restitution, int totalFrames, const char* prefix,
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
 
     PhysicsWorld world;
-    world.config.restitution = restitution;
-    world.config.gravity     = 500.0f;
-    world.config.substeps    = 8;
-    world.config.solverIterations = 8;
-    world.config.damping     = 0.998f;
-    world.config.friction    = 0.1f;
-    world.config.sleepSpeed  = 5.0f;
-    world.config.bounceThreshold = 30.0f;
+    world.config.restitution      = restitution;
+    world.config.gravity          = DefaultPhysicsConfig::gravity;
+    world.config.substeps         = DefaultPhysicsConfig::substeps;
+    world.config.solverIterations = DefaultPhysicsConfig::solverIterations;
+    world.config.damping          = DefaultPhysicsConfig::damping;
+    world.config.friction         = DefaultPhysicsConfig::friction;
+    world.config.sleepSpeed       = DefaultPhysicsConfig::sleepSpeed;
+    world.config.bounceThreshold  = DefaultPhysicsConfig::bounceThreshold;
 
     if (loadCSV) {
         if (!loadSceneFromCSV(loadCSV, world)) {
@@ -241,16 +242,16 @@ int main(int argc, char* argv[]) {
     printf("  R           — Restart simulation\n");
     printf("  ESC / Q     — Quit\n");
 
-    // Set up physics world
+    // Set up physics world with shared default config
     PhysicsWorld world;
-    world.config.restitution = restitution;
-    world.config.gravity     = 500.0f;
-    world.config.substeps    = 8;
-    world.config.solverIterations = 8;
-    world.config.damping     = 0.998f;
-    world.config.friction    = 0.1f;
-    world.config.sleepSpeed  = 5.0f;
-    world.config.bounceThreshold = 30.0f;
+    world.config.restitution      = restitution;
+    world.config.gravity          = DefaultPhysicsConfig::gravity;
+    world.config.substeps         = DefaultPhysicsConfig::substeps;
+    world.config.solverIterations = DefaultPhysicsConfig::solverIterations;
+    world.config.damping          = DefaultPhysicsConfig::damping;
+    world.config.friction         = DefaultPhysicsConfig::friction;
+    world.config.sleepSpeed       = DefaultPhysicsConfig::sleepSpeed;
+    world.config.bounceThreshold  = DefaultPhysicsConfig::bounceThreshold;
 
     if (loadCSV) {
         if (!loadSceneFromCSV(loadCSV, world)) {

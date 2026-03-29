@@ -1,5 +1,27 @@
 # Tasks
 
+## Completed — Iteration 14 (2026-03-29)
+
+- [x] Create `sim_config.h` shared header with `WINDOW_WIDTH`, `WINDOW_HEIGHT`, and `DefaultPhysicsConfig`
+  - Eliminates SDL dependency for tools that only need the simulation coordinate space
+  - `renderer.h` now imports from `sim_config.h` instead of defining its own constants
+- [x] Fix `color_assign.cpp` physics config inconsistency:
+  - Was using `damping=0.999` (main uses 0.998), `sleepSpeed=2.0` (main uses 5.0)
+  - Was missing `solverIterations=8` and `bounceThreshold=30.0`
+  - Now uses `DefaultPhysicsConfig` for identical behavior to the simulator
+- [x] Fix `color_assign.cpp` hardcoded window dimensions (1200.0f, 800.0f → `WINDOW_WIDTH`, `WINDOW_HEIGHT`)
+- [x] Add `# Window: WxH` metadata comment to CSV save for coordinate space documentation
+- [x] Add 6 new tests (58→64):
+  - `default_physics_config_matches_shared_constants`: verifies DefaultPhysicsConfig stays in sync with PhysicsConfig defaults
+  - `csv_save_includes_window_metadata`: checks for window dimension metadata in saved CSV
+  - `coincident_balls_do_not_explode`: two balls at identical position resolve cleanly (no NaN/Inf)
+  - `color_assign_pipeline_produces_colored_csv`: full scene_gen → headless → color_assign → verify pipeline
+  - `high_speed_ball_does_not_tunnel_through_ball_wall`: fast projectile vs ball-wall doesn't tunnel
+  - `csv_roundtrip_preserves_walls_exactly`: wall coordinates survive CSV roundtrip
+- [x] Verify all 64/64 tests pass
+- [x] Run headless simulation — KE=0 by frame ~270 at r=0.3
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, TASKS.md, AGENT-PROGRESS.md)
+
 ## Completed — Iteration 13 (2026-03-28)
 
 - [x] Fix broken git repository (alternates pointing to wrong path after iteration 12 workaround)
@@ -183,6 +205,8 @@
 - [x] ~~**PNG image support**~~ — `color_assign` now uses stb_image: supports PNG, JPG, BMP, TGA, and more (iteration 13)
 - [x] ~~**CI workflow**~~ — GitHub Actions CI: build, test, headless sim, pipeline validation (iteration 13)
 - [x] ~~**Interactive controls**~~ — Pause/resume, single-step, speed adjustment (0.25x–4x), restart (iteration 13)
+- [x] ~~**Shared config / config consistency**~~ — `sim_config.h` with `DefaultPhysicsConfig`; `color_assign` now uses identical physics config to simulator (iteration 14)
+- [x] ~~**CSV metadata**~~ — `# Window: WxH` comment in saved CSV for coordinate space documentation (iteration 14)
 - [ ] **Visual polish**: Restitution slider UI, color scheme options
 - [ ] **SIMD vectorization**: Consider SIMD for the physics step inner loops
 - [ ] **Interactive display**: Need an environment with a real display server (X11/Wayland) for interactive mode

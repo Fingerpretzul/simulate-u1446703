@@ -24,6 +24,7 @@
 
 #include "physics.h"
 #include "csv_io.h"
+#include "sim_config.h"  // DefaultPhysicsConfig, WINDOW_WIDTH, WINDOW_HEIGHT
 
 // stb_image for multi-format image loading (PNG, JPG, BMP, TGA, etc.)
 // The implementation is compiled here; other files only include the header.
@@ -113,13 +114,16 @@ int main(int argc, char* argv[]) {
     printf("  Frames:      %d\n", totalFrames);
 
     // ── Phase 1: Load the initial scene ─────────────────────────────
+    // Use the same physics config as the main simulator for consistent behavior.
     PhysicsWorld world;
-    world.config.restitution = restitution;
-    world.config.gravity     = 500.0f;
-    world.config.substeps    = 8;
-    world.config.damping     = 0.999f;
-    world.config.friction    = 0.1f;
-    world.config.sleepSpeed  = 2.0f;
+    world.config.restitution      = restitution;
+    world.config.gravity          = DefaultPhysicsConfig::gravity;
+    world.config.substeps         = DefaultPhysicsConfig::substeps;
+    world.config.solverIterations = DefaultPhysicsConfig::solverIterations;
+    world.config.damping          = DefaultPhysicsConfig::damping;
+    world.config.friction         = DefaultPhysicsConfig::friction;
+    world.config.sleepSpeed       = DefaultPhysicsConfig::sleepSpeed;
+    world.config.bounceThreshold  = DefaultPhysicsConfig::bounceThreshold;
 
     if (!loadSceneFromCSV(inputCSV, world)) {
         fprintf(stderr, "Failed to load scene from '%s'\n", inputCSV);
@@ -173,8 +177,8 @@ int main(int argc, char* argv[]) {
         // The image is assumed to cover the same coordinate space as
         // the simulation window (WINDOW_WIDTH x WINDOW_HEIGHT).
         // Scale proportionally if the image is a different size.
-        float scaleX = static_cast<float>(image.width) / 1200.0f;  // WINDOW_WIDTH
-        float scaleY = static_cast<float>(image.height) / 800.0f;  // WINDOW_HEIGHT
+        float scaleX = static_cast<float>(image.width) / static_cast<float>(WINDOW_WIDTH);
+        float scaleY = static_cast<float>(image.height) / static_cast<float>(WINDOW_HEIGHT);
 
         int px = static_cast<int>(ball.pos.x * scaleX);
         int py = static_cast<int>(ball.pos.y * scaleY);

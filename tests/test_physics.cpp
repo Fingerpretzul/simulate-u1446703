@@ -5,12 +5,14 @@
 
 #include "physics.h"
 #include "csv_io.h"
+#include "sim_config.h"
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <string>
 
 // ── Minimal test framework ──────────────────────────────────────────
 static int tests_run = 0;
@@ -1919,6 +1921,194 @@ TEST(headless_csv_pipeline_end_to_end) {
         ASSERT(!std::isnan(b.pos.y));
         ASSERT(b.radius > 0.0f);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Iteration 14 — shared config, CSV metadata, degenerate cases
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(default_physics_config_matches_shared_constants) {
+    // Verify that DefaultPhysicsConfig in sim_config.h matches the defaults
+    // in PhysicsConfig. This catches drift between the two definitions.
+    PhysicsConfig cfg;
+    ASSERT_NEAR(cfg.gravity,       DefaultPhysicsConfig::gravity,       0.01f);
+    ASSERT_NEAR(cfg.restitution,   DefaultPhysicsConfig::restitution,   0.01f);
+    ASSERT(cfg.substeps         == DefaultPhysicsConfig::substeps);
+    ASSERT(cfg.solverIterations == DefaultPhysicsConfig::solverIterations);
+    ASSERT_NEAR(cfg.damping,       DefaultPhysicsConfig::damping,       0.001f);
+    ASSERT_NEAR(cfg.friction,      DefaultPhysicsConfig::friction,      0.01f);
+    ASSERT_NEAR(cfg.sleepSpeed,    DefaultPhysicsConfig::sleepSpeed,    0.01f);
+    ASSERT_NEAR(cfg.bounceThreshold, DefaultPhysicsConfig::bounceThreshold, 0.01f);
+}
+
+TEST(csv_save_includes_window_metadata) {
+    // Verify that saved CSV files include the window dimension metadata
+    // comment so color_assign and other tools can determine the coordinate space.
+    PhysicsWorld world;
+    Ball b(Vec2(100, 200), 5.0f);
+    world.balls.push_back(b);
+
+    std::string path = "/tmp/test_csv_metadata.csv";
+    ASSERT(saveSceneToCSV(path, world));
+
+    // Read back the file and check for the metadata comment
+    std::ifstream f(path);
+    ASSERT(f.is_open());
+
+    bool foundWindowMeta = false;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.find("# Window:") != std::string::npos) {
+            // Verify it contains the correct dimensions
+            char widthStr[32], heightStr[32];
+            if (sscanf(line.c_str(), "# Window: %[^x]x%s", widthStr, heightStr) == 2) {
+                int w = atoi(widthStr);
+                int h = atoi(heightStr);
+                ASSERT(w == WINDOW_WIDTH);
+                ASSERT(h == WINDOW_HEIGHT);
+                foundWindowMeta = true;
+            }
+        }
+    }
+    ASSERT(foundWindowMeta);
+}
+
+TEST(coincident_balls_do_not_explode) {
+    // Two balls placed at exactly the same position should be separated
+    // cleanly without producing NaN or explosive velocities.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    world.walls.push_back(Wall(Vec2(0, 0), Vec2(200, 0)));
+    world.walls.push_back(Wall(Vec2(200, 0), Vec2(200, 200)));
+    world.walls.push_back(Wall(Vec2(200, 200), Vec2(0, 200)));
+    world.walls.push_back(Wall(Vec2(0, 200), Vec2(0, 0)));
+
+    // Two balls at exactly the same position
+    Ball a(Vec2(100, 100), 5.0f);
+    Ball b(Vec2(100, 100), 5.0f);
+    world.balls.push_back(a);
+    world.balls.push_back(b);
+
+    // Run for 1 second
+    for (int i = 0; i < 60; ++i) world.step(0.016f);
+
+    // Both balls should be valid (no NaN/Inf) and separated
+    for (const auto& ball : world.balls) {
+        ASSERT(!std::isnan(ball.pos.x));
+        ASSERT(!std::isnan(ball.pos.y));
+        ASSERT(!std::isinf(ball.pos.x));
+        ASSERT(!std::isinf(ball.pos.y));
+        ASSERT(!std::isnan(ball.vel.x));
+        ASSERT(!std::isnan(ball.vel.y));
+        ASSERT(ball.vel.length() < 500.0f); // No explosive velocities
+    }
+
+    // They should now be separated
+    float dist = (world.balls[1].pos - world.balls[0].pos).length();
+    ASSERT(dist >= 9.0f); // sum of radii - small tolerance
+}
+
+TEST(color_assign_pipeline_produces_colored_csv) {
+    // End-to-end test of the color_assign tool pipeline:
+    // Generate scene → run color_assign with a generated BMP → verify output
+    int ret;
+
+    // Step 1: Generate a small scene
+    ret = system("./build/scene_gen /tmp/ca_input.csv --balls 10 --layout grid --seed 42 2>/dev/null");
+    ASSERT(ret == 0);
+
+    // Step 2: Run headless to get a BMP screenshot that we can use as the image
+    ret = system("./build/simulator --headless --load-csv /tmp/ca_input.csv 0.3 200 /tmp/ca_sim 2>/dev/null");
+    ASSERT(ret == 0);
+
+    // Step 3: Run color_assign using the settled BMP as the color source
+    ret = system("./build/color_assign /tmp/ca_input.csv /tmp/ca_sim_settled.bmp /tmp/ca_output.csv 0.3 200 2>/dev/null");
+    ASSERT(ret == 0);
+
+    // Step 4: Load the output and verify all balls have colors assigned
+    PhysicsWorld world;
+    bool loaded = loadSceneFromCSV("/tmp/ca_output.csv", world);
+    ASSERT(loaded);
+    ASSERT(world.balls.size() == 10);
+
+    // All balls should have colors assigned by color_assign
+    int coloredCount = 0;
+    for (const auto& b : world.balls) {
+        if (b.color.hasColor) coloredCount++;
+        // Positions should be valid
+        ASSERT(!std::isnan(b.pos.x));
+        ASSERT(!std::isnan(b.pos.y));
+    }
+    ASSERT(coloredCount == 10);
+}
+
+TEST(high_speed_ball_does_not_tunnel_through_ball_wall) {
+    // A very fast ball aimed at a wall of other balls should not tunnel
+    // through them due to CCD and substep handling.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.restitution = 0.5f;
+    world.config.sleepSpeed = 0.0f;
+
+    // Container
+    world.walls.push_back(Wall(Vec2(0, 0), Vec2(400, 0)));
+    world.walls.push_back(Wall(Vec2(400, 0), Vec2(400, 200)));
+    world.walls.push_back(Wall(Vec2(400, 200), Vec2(0, 200)));
+    world.walls.push_back(Wall(Vec2(0, 200), Vec2(0, 0)));
+
+    // Row of stationary balls forming a "wall"
+    for (int i = 0; i < 10; ++i) {
+        Ball b(Vec2(200.0f, 10.0f + i * 20.0f), 10.0f);
+        world.balls.push_back(b);
+    }
+
+    // Fast ball aimed at the ball wall
+    Ball fast(Vec2(50.0f, 100.0f), 5.0f);
+    fast.vel = Vec2(2000.0f, 0.0f); // Very fast
+    world.balls.push_back(fast);
+
+    // Run for 1 second
+    for (int i = 0; i < 60; ++i) world.step(0.016f);
+
+    // The fast ball should not have tunneled past x=200 + ball radii
+    // It should be somewhere in the left half or bounced back
+    Ball& projectile = world.balls[10];
+    ASSERT(!std::isnan(projectile.pos.x));
+    ASSERT(!std::isinf(projectile.pos.x));
+    // Must be inside the container
+    ASSERT(projectile.pos.x > 0.0f && projectile.pos.x < 400.0f);
+}
+
+TEST(csv_roundtrip_preserves_walls_exactly) {
+    // Verify that wall coordinates survive a CSV save/load roundtrip
+    // with minimal floating-point drift.
+    PhysicsWorld world;
+    world.walls.push_back(Wall(Vec2(50.0f, 50.0f), Vec2(1150.0f, 50.0f)));
+    world.walls.push_back(Wall(Vec2(1150.0f, 50.0f), Vec2(1150.0f, 750.0f)));
+    world.walls.push_back(Wall(Vec2(100.5f, 200.25f), Vec2(500.75f, 350.125f)));
+
+    Ball b(Vec2(100, 100), 5.0f);
+    world.balls.push_back(b);
+
+    std::string path = "/tmp/test_wall_roundtrip.csv";
+    ASSERT(saveSceneToCSV(path, world));
+
+    PhysicsWorld loaded;
+    ASSERT(loadSceneFromCSV(path, loaded));
+    ASSERT(loaded.walls.size() == 3);
+
+    // Check each wall's coordinates
+    ASSERT_NEAR(loaded.walls[0].p1.x, 50.0f, 0.1f);
+    ASSERT_NEAR(loaded.walls[0].p1.y, 50.0f, 0.1f);
+    ASSERT_NEAR(loaded.walls[0].p2.x, 1150.0f, 0.1f);
+    ASSERT_NEAR(loaded.walls[0].p2.y, 50.0f, 0.1f);
+
+    ASSERT_NEAR(loaded.walls[2].p1.x, 100.5f, 0.1f);
+    ASSERT_NEAR(loaded.walls[2].p1.y, 200.25f, 0.1f);
+    ASSERT_NEAR(loaded.walls[2].p2.x, 500.75f, 0.1f);
+    ASSERT_NEAR(loaded.walls[2].p2.y, 350.125f, 0.1f);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

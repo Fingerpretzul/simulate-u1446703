@@ -6,6 +6,7 @@
 // readable while supporting mixed entity types.
 
 #include "csv_io.h"
+#include "sim_config.h"  // WINDOW_WIDTH, WINDOW_HEIGHT for metadata
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -133,8 +134,9 @@ bool saveSceneToCSV(const std::string& filename, const PhysicsWorld& world) {
         return false;
     }
 
-    // Write header with comment explaining both formats
+    // Write header with comment explaining both formats and metadata
     file << "# Physics simulator scene file\n";
+    file << "# Window: " << WINDOW_WIDTH << "x" << WINDOW_HEIGHT << "\n";
     file << "# Ball format: ball,x,y,radius,r,g,b\n";
     file << "# Wall format: wall,x1,y1,x2,y2\n";
     file << "type,param1,param2,param3,param4,param5,param6\n";

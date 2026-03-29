@@ -1,5 +1,61 @@
 # Agent Progress Log
 
+## Iteration 14 — 2026-03-29 (Claude Opus 4.6)
+
+### What was done
+Shared configuration extraction, config consistency fix, CSV metadata, and expanded test coverage (58→64 tests).
+
+1. **Created `sim_config.h` shared configuration header** (`include/sim_config.h`):
+   - Extracted `WINDOW_WIDTH` (1200) and `WINDOW_HEIGHT` (800) from `renderer.h` into a new SDL-independent header
+   - Added `DefaultPhysicsConfig` struct with centralized physics defaults (gravity, damping, substeps, solverIterations, friction, sleepSpeed, bounceThreshold)
+   - `renderer.h` now imports from `sim_config.h` — no duplicate definitions
+   - All tools (`main.cpp`, `color_assign.cpp`, tests) share the same constants
+
+2. **Fixed `color_assign.cpp` physics config inconsistency**:
+   - **Bug**: `color_assign` was using different physics config from the main simulator:
+     - `damping=0.999` (should be 0.998)
+     - `sleepSpeed=2.0` (should be 5.0)
+     - Missing `solverIterations=8` and `bounceThreshold=30.0`
+   - This caused `color_assign` to produce different settling behavior than the simulator
+   - **Fix**: Now uses `DefaultPhysicsConfig` for identical behavior
+   - Also fixed hardcoded window dimensions (1200.0f, 800.0f → `WINDOW_WIDTH`, `WINDOW_HEIGHT`)
+
+3. **CSV window dimension metadata** (`src/csv_io.cpp`):
+   - Saved CSV files now include `# Window: 1200x800` comment in the header
+   - Allows downstream tools to determine the simulation coordinate space
+   - Tested via `csv_save_includes_window_metadata` test
+
+4. **6 new tests** (58→64, all passing):
+   - `default_physics_config_matches_shared_constants`: Guards against drift between `DefaultPhysicsConfig` and `PhysicsConfig` field defaults
+   - `csv_save_includes_window_metadata`: Verifies window dimension metadata in CSV output
+   - `coincident_balls_do_not_explode`: Two balls at identical position resolve without NaN/Inf
+   - `color_assign_pipeline_produces_colored_csv`: Full end-to-end test: scene_gen → headless sim → color_assign → verify all balls colored
+   - `high_speed_ball_does_not_tunnel_through_ball_wall`: Fast projectile vs row of balls doesn't tunnel
+   - `csv_roundtrip_preserves_walls_exactly`: Wall coordinates survive CSV save/load roundtrip
+
+### Test results
+- **64/64 tests pass** (6 new)
+- Headless simulation: KE=0 by frame ~270 at restitution=0.3
+- color_assign pipeline verified end-to-end with correct color assignment
+
+### Files changed
+- `include/sim_config.h` — **New**: shared constants and DefaultPhysicsConfig
+- `include/renderer.h` — Imports from sim_config.h instead of defining WINDOW_WIDTH/HEIGHT
+- `src/main.cpp` — Uses DefaultPhysicsConfig for both headless and interactive modes
+- `src/color_assign.cpp` — Uses DefaultPhysicsConfig and WINDOW_WIDTH/HEIGHT from sim_config.h
+- `src/csv_io.cpp` — Includes sim_config.h; writes `# Window: WxH` metadata comment
+- `tests/test_physics.cpp` — 6 new tests
+- `docs/ARCHITECTURE.md` — Documents sim_config.h, CSV metadata, test count update
+- `docs/BUILD.md` — Test count and categories updated
+- `TASKS.md` — Iteration 14 tasks logged
+- `AGENT-PROGRESS.md` — This entry
+
+### Known issues remaining
+- No interactive display (needs X11/Wayland)
+- Git push still needs GitHub credentials
+- Visual polish (UI sliders, color schemes) not yet implemented
+- SIMD vectorization for physics inner loops not yet explored
+
 ## Iteration 13 — 2026-03-28 (Claude Opus 4.6)
 
 ### What was done

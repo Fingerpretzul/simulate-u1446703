@@ -36,7 +36,7 @@ cmake --build build
 ./build/tests
 ```
 
-Expected: **58/58 tests pass**. Includes:
+Expected: **64/64 tests pass**. Includes:
 - Vec2 math (6), gravity (2), ball-wall (5), ball-ball (4)
 - Restitution behavior (4), energy/settling (3), wall normals (2)
 - Collision edge cases (3), CCD (2), performance benchmark (1)
@@ -47,6 +47,11 @@ Expected: **58/58 tests pass**. Includes:
 - Scene generator (3): grid CSV validation, funnel layout, all-layouts validation
 - Edge cases (4): corner collision, narrow channel, small radius, large radius difference
 - Pipeline (1): end-to-end headless CSV workflow
+- Shared config (1): DefaultPhysicsConfig matches PhysicsConfig defaults
+- CSV metadata (1): window dimensions written in save
+- Degenerate cases (2): coincident balls, high-speed ball-to-ball
+- Color assign pipeline (1): end-to-end color_assign tool test
+- CSV roundtrip (1): wall coordinate preservation
 
 ## Run Simulator
 

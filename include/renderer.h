@@ -3,11 +3,8 @@
 // Handles window creation, drawing balls and walls, and the main loop.
 
 #include "physics.h"
+#include "sim_config.h"  // WINDOW_WIDTH, WINDOW_HEIGHT (shared with non-SDL tools)
 #include <SDL3/SDL.h>
-
-// Window dimensions
-constexpr int WINDOW_WIDTH  = 1200;
-constexpr int WINDOW_HEIGHT = 800;
 
 // ── Renderer class ──────────────────────────────────────────────────
 // Wraps SDL3 window + renderer. Draws the physics world each frame.

@@ -4,12 +4,13 @@
 
 ```
 simulate-u1446703/
-├── CMakeLists.txt          # Build configuration (5 targets: physics_lib, csv_io_lib, simulator, color_assign, scene_gen, tests)
+├── CMakeLists.txt          # Build configuration (6 targets: physics_lib, csv_io_lib, simulator, color_assign, scene_gen, tests)
 ├── .github/
 │   └── workflows/
 │       └── ci.yml          # GitHub Actions CI (build, test, headless sim, pipeline)
 ├── include/
 │   ├── physics.h           # Core physics types: Vec2, Ball, BallColor, Wall, PhysicsWorld, SpatialGrid
+│   ├── sim_config.h        # Shared constants (WINDOW_WIDTH/HEIGHT, DefaultPhysicsConfig) — no SDL dependency
 │   ├── renderer.h          # SDL3 renderer wrapper with interactive controls
 │   ├── csv_io.h            # CSV scene file I/O (load/save balls + walls)
 │   └── stb_image.h         # Single-header image library (PNG/JPG/BMP/TGA support)
@@ -21,7 +22,7 @@ simulate-u1446703/
 │   ├── scene_gen.cpp       # Procedural scene generator (grid/rain/funnel/pile layouts)
 │   └── main.cpp            # Entry point, scene setup, main loop, headless mode, CSV CLI
 ├── tests/
-│   └── test_physics.cpp    # 58 unit tests (physics + CSV I/O + sleep system + edge cases + pipeline)
+│   └── test_physics.cpp    # 64 unit tests (physics + CSV I/O + sleep system + edge cases + pipeline + config)
 ├── screenshots/            # BMP screenshots from headless runs (gitignored)
 ├── docs/
 │   ├── ARCHITECTURE.md     # This file
@@ -68,11 +69,18 @@ simulate-u1446703/
   - R: restart simulation from initial state
   - ESC/Q: quit
 
+### Shared Configuration (sim_config.h)
+
+- **WINDOW_WIDTH / WINDOW_HEIGHT**: Simulation coordinate space constants (1200×800), shared by all tools without SDL dependency.
+- **DefaultPhysicsConfig**: Centralized physics defaults (gravity, damping, substeps, etc.) used by both `main.cpp` and `color_assign.cpp` to ensure consistent simulation behavior across tools.
+- Extracted in iteration 14 to fix config drift between `color_assign` (which had different damping=0.999, sleepSpeed=2.0, missing solverIterations/bounceThreshold) and the main simulator.
+
 ### CSV I/O (csv_io.h / csv_io.cpp)
 
 - **File format**: Single CSV file holds both balls and walls, distinguished by a `type` column.
 - Ball rows: `ball,x,y,radius,r,g,b` (color columns optional on load).
 - Wall rows: `wall,x1,y1,x2,y2`.
+- **Window metadata**: Saved CSV files include a `# Window: WxH` comment with the simulation coordinate space dimensions. This allows `color_assign` and other tools to determine the correct coordinate mapping.
 - Comments (lines starting with `#`) and a header row are supported.
 - `loadSceneFromCSV()` clears existing world data before loading.
 - `saveSceneToCSV()` writes current ball positions and colors.
@@ -109,6 +117,7 @@ simulate-u1446703/
 | `CellKey` / `CellKeyHash` | physics.h | Grid cell coordinate + hash for unordered_map |
 | `CellData` | physics.h | Per-cell ball indices + generation stamp |
 | `PhysicsWorld` | physics.h/cpp | Owns balls+walls, runs simulation step with CCD |
+| `DefaultPhysicsConfig` | sim_config.h | Centralized physics defaults shared across simulator and tools |
 | `Renderer` | renderer.h/cpp | SDL3 window, drawing, event handling, FPS HUD, screenshots |
 | `loadSceneFromCSV` | csv_io.h/cpp | Load balls + walls from CSV file |
 | `saveSceneToCSV` | csv_io.h/cpp | Save current scene to CSV file |
