@@ -18,7 +18,9 @@
       "Bash(echo \"MISSING in $sha: $blob\" done done)",
       "Bash(git push:*)",
       "Bash(env)",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "Bash(cmake --build . --parallel 4)",
+      "Bash(./tests)"
     ]
   }
 }

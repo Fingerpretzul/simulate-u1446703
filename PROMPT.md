@@ -13,13 +13,17 @@ You are implementing a 2D physics simulator using SDL3 via C++.. The simulator s
 
 **Every Ball should be affected by physics at all times**. This is **vitally important** and must be thoroughly checked for. If balls "freeze" in place, this needs to be
 
-Make it possible to describe the initial scene in a CSV file; the CSV file should have one row per ball and list a starting position and a color. The CSV should also be capable of describing walls in a similar manor. Make the simulator save the final positions to a similar CSV file. Add a tool that takes an initial scene CSV file and assign colors based on where the final balls end up and what color a given image has at that location.
+Make it possible to describe the initial scene in a CSV file; the CSV file should have one row per ball and list a starting position and a color. The CSV should also be capable of describing walls in a similar manor. Make the simulator save the final positions to a similar CSV file.
+
+Add a tool that takes an initial scene CSV file and assign colors based on where the final balls end up and what color a given image has at that location. The end result of running this tool should produce a CSV that you can run, and have all the balls produce an image when they finish settling
 
 There must be accurate and adequate tests for this simulator. You must at all costs verify that the simulator is working after every change, by whatever means necessary. You are encouraged to launch the program yourself and verify that it works properly.
 
 # Priorities
 
 You must **always** make sure existing features are up to spec before beginning on a new feature. New features should not be created, nor their tests created, until every existing and core feature works flawlessly. It may take multiple iterations to make this happen. You're goal is polish, not fancy features.
+
+Tests should **always** have a reasonable timeout so they don't run forever.
 
 # Multi-agent context
 
