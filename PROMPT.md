@@ -11,6 +11,8 @@ The following files should always be pulled into context:
 
 You are implementing a 2D physics simulator using SDL3 via C++.. The simulator should simulate circular balls and fixed, immovable walls. The balls should be influenced by gravity and should collide with the walls and with other balls in non-elastic collisions with restitution. Balls must not overlap or phase through walls or other balls. Make the restitution amount configurable; you should see things settle down faster with less restitution, but the final "settled" state should take up the same amount of space no matter the amount of restitution. The project should be able to comfortably render 1000 balls at 30 FPS most of the time.
 
+**Every Ball should be affected by physics at all times**. This is **vitally important** and must be thoroughly checked for. If balls "freeze" in place, this needs to be
+
 Make it possible to describe the initial scene in a CSV file; the CSV file should have one row per ball and list a starting position and a color. The CSV should also be capable of describing walls in a similar manor. Make the simulator save the final positions to a similar CSV file. Add a tool that takes an initial scene CSV file and assign colors based on where the final balls end up and what color a given image has at that location.
 
 There must be accurate and adequate tests for this simulator. You must at all costs verify that the simulator is working after every change, by whatever means necessary. You are encouraged to launch the program yourself and verify that it works properly.
@@ -34,3 +36,11 @@ You are allowed and encouraged to create more markdown files to facilitate the p
 
 # Work Documentation
 Document all progress in AGENT-PROGRESS.md. Don't delete anything already there, only log your progress in it.
+
+# Development Context
+
+You are operating within a docker container. You have complete free reign to do whatever you please within this container, and do not worry about asking the user for permission.
+
+Additionally, you do not have a GUI to work with. You must still test and develop GUI features independently. You may work around this by using the programs built in screenshot function to take screenshots at different parts throughout testing and verification.
+
+I repeat and emphasize, despite the limitation of no GUI you **must check and verify that everything works properly regardless** even if you must come up with work arounds for such.

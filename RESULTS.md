@@ -8,4 +8,8 @@ One change I did make to the prompt was to specify that the simulator should be 
 
 # Week 9
 
-Once again, I didn't need to make any changes to my prompt.
+I made very few changes to my prompt, the biggest one was some lines trying to emphasize the importance of tests. I also shifted to instruct it to write tests before beginning a new feature, in order to to better define the parameters of what it was working towards
+
+As for bugs, I thought until I came to write this that it was mostly bug free. However I then realized i had been building the project incorrectly, which was not updating it with the newest changes. As I finally rebuilt, I noticed a glaring bug where some balls seem to just begin completely static. It seems to be random, as each time I restart it affects different balls.
+
+When I noticed htis
