@@ -1553,6 +1553,60 @@ TEST(settling_with_zero_initial_velocity) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Phase 2 floating-freeze regression test (iteration 16)
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(phase2_floating_ball_falls_under_gravity) {
+    // Regression test for the "floating freeze" bug:
+    //
+    // A ball that was previously active (Phase 2, hasBeenActive=true) with
+    // near-zero velocity in the air was being frozen by instant sleep.
+    // The physics step adds gravity*subDt ≈ 1.0 px/s per substep, but the
+    // sleep threshold is 5.0 px/s. With Phase 2 instant sleep, each substep
+    // zeros this gravity contribution before it can accumulate, and the ball
+    // appears frozen in place.
+    //
+    // Fix: Phase 2 balls NOT in resting contact use counter-based sleep
+    // (same as Phase 1), allowing gravity to build up over sleepDelay
+    // substeps before triggering sleep.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.substeps = 8;
+    world.config.restitution = 0.3f;
+    world.config.damping = 0.998f;
+    world.config.sleepSpeed = 5.0f;
+    world.config.sleepDelay = 8;
+
+    // Floor at y=600
+    world.walls.push_back(Wall(Vec2(0.0f, 600.0f), Vec2(200.0f, 600.0f)));
+    // Side walls to keep ball in container
+    world.walls.push_back(Wall(Vec2(200.0f, 0.0f), Vec2(200.0f, 600.0f)));
+    world.walls.push_back(Wall(Vec2(0.0f, 600.0f), Vec2(0.0f, 0.0f)));
+
+    // Ball starts high up, marked as Phase 2 (hasBeenActive=true),
+    // with zero initial velocity — simulates a ball that previously settled
+    // then got displaced into the air (e.g., by another collision).
+    Ball b(Vec2(100.0f, 50.0f), 10.0f);
+    b.vel = {0.0f, 0.0f};
+    b.hasBeenActive = true; // Phase 2: was previously active
+    world.balls.push_back(b);
+
+    float startY = world.balls[0].pos.y;
+
+    // Run for 2 simulated seconds
+    for (int i = 0; i < 120; ++i) {
+        world.step(0.016f);
+    }
+
+    // Ball must have fallen significantly — NOT frozen in place.
+    // Without the fix, the ball would fall < 10 px (essentially frozen).
+    // With the fix, it should fall at least 200 px toward the floor.
+    ASSERT(world.balls[0].pos.y > startY + 200.0f);
+    // Ball should be resting on the floor (or very close)
+    ASSERT(world.balls[0].pos.y < 600.0f);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Contact-aware settling tests (iteration 12)
 // ═══════════════════════════════════════════════════════════════════════
 
