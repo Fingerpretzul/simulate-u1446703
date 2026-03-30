@@ -12,4 +12,8 @@ I made very few changes to my prompt, the biggest one was some lines trying to e
 
 As for bugs, I thought until I came to write this that it was mostly bug free. However I then realized i had been building the project incorrectly, which was not updating it with the newest changes. As I finally rebuilt, I noticed a glaring bug where some balls seem to just begin completely static. It seems to be random, as each time I restart it affects different balls.
 
-When I noticed htis
+When I noticed this, I tweaked my prompt a bit. I explicitely told the agent to look for bugs using any GUI tools it can, and told it to account for the fact that I run it within a docker container. It created in the code a tool for taking screenshots of the program and was going off of that. Once I had done that I let it run for longer in order to polish.
+
+Unfortunately, I ran through my daily credits Claude. Multiple times. I even switched down to Sonnet in order to conserve credits.
+
+Due to this and my procrastination, my project will not be finished by the extended due date (Sun. Mar 29). I recognize that I will be docked points for this, but I hope you don't judge too harshly.
